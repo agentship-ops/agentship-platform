@@ -26,15 +26,13 @@ export default function Login() {
   return (
     <div style={styles.page}>
       <div style={styles.card}>
-        <div style={styles.logoBlock}>
-          <div style={styles.logoIcon}>A</div>
-          <div style={styles.logoText}>
-            <span style={styles.poweredBy}>Powered by</span>
-            <span style={styles.agentship}>AGENTSHIP</span>
-          </div>
+
+        <div style={styles.header}>
+          <div style={styles.agentship}>AGENTSHIP</div>
+          <p style={styles.tagline}>Grow your business. Keep your brand.</p>
         </div>
 
-        <p style={styles.tagline}>Grow your business. Keep your brand.</p>
+        <div style={styles.divider} />
 
         <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.fieldGroup}>
@@ -66,13 +64,14 @@ export default function Login() {
           {error && <p style={styles.error}>{error}</p>}
 
           <button type="submit" disabled={loading} style={styles.button}>
-            {loading ? 'Signing in...' : 'Sign in'}
+            {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
 
         <p style={styles.footer}>
-          Need access? Contact your Agentship leader.
+          Need access? Contact <a href="mailto:operations@agentship.com" style={styles.link}>operations@agentship.com</a>
         </p>
+
       </div>
     </div>
   )
@@ -93,62 +92,47 @@ const styles = {
     background: '#1E1E1E',
     border: '0.5px solid #2a2a2a',
     borderRadius: '16px',
-    padding: '40px 36px',
+    overflow: 'hidden',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
   },
-  logoBlock: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    marginBottom: '8px',
-  },
-  logoIcon: {
-    width: '40px',
-    height: '40px',
-    borderRadius: '8px',
-    background: '#C9A84C',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '20px',
-    fontWeight: '700',
-    color: '#0A0A0A',
-    fontFamily: 'Montserrat, sans-serif',
-    letterSpacing: '-1px',
-  },
-  logoText: {
+  header: {
+    width: '100%',
     display: 'flex',
     flexDirection: 'column',
-  },
-  poweredBy: {
-    fontSize: '10px',
-    fontWeight: '400',
-    color: '#888',
-    letterSpacing: '1.5px',
-    textTransform: 'uppercase',
-    lineHeight: 1.2,
+    alignItems: 'center',
+    padding: '36px 36px 28px',
   },
   agentship: {
-    fontSize: '18px',
+    fontSize: '26px',
     fontWeight: '700',
-    color: '#C9A84C',
-    letterSpacing: '3px',
-    lineHeight: 1.1,
+    color: '#FFFFFF',
+    letterSpacing: '5px',
+    textTransform: 'uppercase',
+    fontFamily: 'Montserrat, sans-serif',
+    marginBottom: '8px',
   },
   tagline: {
     fontSize: '11px',
-    color: '#666',
+    color: '#888',
     letterSpacing: '0.5px',
-    marginBottom: '32px',
+    fontStyle: 'italic',
     textAlign: 'center',
+    fontFamily: 'Montserrat, sans-serif',
+    margin: 0,
+  },
+  divider: {
+    width: '100%',
+    height: '1px',
+    background: '#C9A84C',
   },
   form: {
     width: '100%',
     display: 'flex',
     flexDirection: 'column',
     gap: '16px',
+    padding: '32px 36px 0',
   },
   fieldGroup: {
     display: 'flex',
@@ -161,6 +145,7 @@ const styles = {
     color: '#888',
     letterSpacing: '0.8px',
     textTransform: 'uppercase',
+    fontFamily: 'Montserrat, sans-serif',
   },
   input: {
     width: '100%',
@@ -170,6 +155,8 @@ const styles = {
     borderRadius: '8px',
     fontSize: '14px',
     color: '#FFFFFF',
+    fontFamily: 'Montserrat, sans-serif',
+    boxSizing: 'border-box',
   },
   error: {
     fontSize: '12px',
@@ -179,6 +166,7 @@ const styles = {
     background: 'rgba(224, 112, 112, 0.08)',
     borderRadius: '6px',
     border: '0.5px solid rgba(224, 112, 112, 0.2)',
+    fontFamily: 'Montserrat, sans-serif',
   },
   button: {
     width: '100%',
@@ -192,11 +180,18 @@ const styles = {
     textTransform: 'uppercase',
     marginTop: '4px',
     fontFamily: 'Montserrat, sans-serif',
+    cursor: 'pointer',
+    border: 'none',
   },
   footer: {
     fontSize: '11px',
     color: '#555',
-    marginTop: '24px',
+    margin: '24px 0 32px',
     textAlign: 'center',
+    fontFamily: 'Montserrat, sans-serif',
+  },
+  link: {
+    color: '#C9A84C',
+    textDecoration: 'none',
   },
 }
