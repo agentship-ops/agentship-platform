@@ -10,7 +10,7 @@ export default function AcceptInvite() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [sessionReady, setSessionReady] = useState(false)
-  const navigate = useNavigate()x
+  const navigate = useNavigate()
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
