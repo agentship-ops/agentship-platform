@@ -51,8 +51,7 @@ export default function AcceptInvite() {
     const { data: { user } } = await supabase.auth.getUser()
     const { error: profileError } = await supabase
       .from('profiles')
-      .update({ first_name: firstName.trim(), last_name: lastName.trim() })
-      .eq('id', user.id)
+      .upsert({ id: user.id, first_name: firstName.trim(), last_name: lastName.trim(), role: 'agent' })
 
     if (profileError) {
       setError('Account created but profile update failed. Please contact operations@agentship.com.')
