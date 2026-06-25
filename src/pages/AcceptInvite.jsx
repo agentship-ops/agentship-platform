@@ -10,7 +10,7 @@ export default function AcceptInvite() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [sessionReady, setSessionReady] = useState(false)
-  const navigate = useNavigate()
+  const navigate = useNavigate()x
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -41,7 +41,11 @@ export default function AcceptInvite() {
 
     setLoading(true)
 
-    const { error: updateError } = await supabase.auth.updateUser({ password })
+    const { error: updateError } = await supabase.auth.updateUser({
+      password,
+      data: { first_name: firstName.trim(), last_name: lastName.trim() }
+    })
+
     if (updateError) {
       setError(updateError.message)
       setLoading(false)
@@ -49,9 +53,12 @@ export default function AcceptInvite() {
     }
 
     const { data: { user } } = await supabase.auth.getUser()
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .upsert({ id: user.id, first_name: firstName.trim(), last_name: lastName.trim(), role: 'agent' })
+
+    const { error: profileError } = await supabase.rpc('set_profile', {
+      user_id: user.id,
+      first: firstName.trim(),
+      last: lastName.trim()
+    })
 
     if (profileError) {
       setError('Account created but profile update failed. Please contact operations@agentship.com.')
@@ -77,7 +84,7 @@ export default function AcceptInvite() {
           <p style={styles.loading}>Verifying your invite...</p>
         )}
 
-        {error && (
+        {error && !sessionReady && (
           <p style={styles.errorBox}>{error}</p>
         )}
 
