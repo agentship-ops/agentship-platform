@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useAuth } from '../lib/AuthContext'
+import { supabase } from '../supabase'
 
 const NAV = [
   {
@@ -97,6 +98,28 @@ export default function Sidebar({ open, activeView, setActiveView }) {
     ? `${profile.first_name?.[0] ?? ''}${profile.last_name?.[0] ?? ''}`
     : '?'
 
+  const fileInputRef = useRef(null)
+  const [uploading, setUploading] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url || null)
+
+  async function handleAvatarUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file || !profile) return
+    setUploading(true)
+    const ext = file.name.split('.').pop()
+    const path = `${profile.id}/avatar.${ext}`
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(path, file, { upsert: true })
+    if (!uploadError) {
+      const { data } = supabase.storage.from('avatars').getPublicUrl(path)
+      const publicUrl = `${data.publicUrl}?t=${Date.now()}`
+      await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', profile.id)
+      setAvatarUrl(publicUrl)
+    }
+    setUploading(false)
+  }
+
   function toggleSection(id) {
     setOpenSections(prev => ({ ...prev, [id]: !prev[id] }))
   }
@@ -123,7 +146,7 @@ export default function Sidebar({ open, activeView, setActiveView }) {
                 }}
               >
                 <i className={`ti ${node.icon}`} aria-hidden="true" style={{ fontSize: '18px', color: active ? '#C9A84C' : '#C9A84C', flexShrink: 0 }} />
-                <span style={{ color: '#ffffff' }}>{node.label}</span>
+                <span style={{ color: active ? '#C9A84C' : '#C9A84C' }}>{node.label}</span>
               </button>
             )
           }
@@ -181,7 +204,25 @@ export default function Sidebar({ open, activeView, setActiveView }) {
       </nav>
 
       <div style={styles.footer}>
-        <div style={styles.avatar}>{initials}</div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={handleAvatarUpload}
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          aria-label="Upload profile photo"
+          title="Click to upload photo"
+          style={styles.avatarBtn}
+        >
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="Profile" style={styles.avatarImg} />
+          ) : (
+            <span>{uploading ? '...' : initials}</span>
+          )}
+        </button>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>
             {profile ? `${profile.first_name} ${profile.last_name}` : 'Agent'}
@@ -191,7 +232,11 @@ export default function Sidebar({ open, activeView, setActiveView }) {
           </div>
         </div>
         <button onClick={signOut} aria-label="Sign out" style={styles.signOutBtn}>
-          <i className="ti ti-logout" aria-hidden="true" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
         </button>
       </div>
     </aside>
@@ -300,9 +345,9 @@ const styles = {
     gap: '10px',
     flexShrink: 0,
   },
-  avatar: {
-    width: '32px',
-    height: '32px',
+  avatarBtn: {
+    width: '34px',
+    height: '34px',
     borderRadius: '50%',
     background: '#C9A84C',
     color: '#0A0A0A',
@@ -312,6 +357,17 @@ const styles = {
     fontSize: '11px',
     fontWeight: '700',
     flexShrink: 0,
+    border: 'none',
+    cursor: 'pointer',
+    overflow: 'hidden',
+    padding: 0,
+  },
+  avatarImg: {
+    width: '34px',
+    height: '34px',
+    borderRadius: '50%',
+    objectFit: 'cover',
+    display: 'block',
   },
   signOutBtn: {
     width: '32px',
