@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react'
 import { useAuth } from '../lib/AuthContext'
-import { supabase } from './supabase'
-  const NAV = [
+import { supabase } from '../../supabase'
+
+const NAV = [
   {
     type: 'standalone',
     id: 'leaderboard',
