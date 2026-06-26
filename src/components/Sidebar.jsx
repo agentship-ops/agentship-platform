@@ -122,8 +122,8 @@ export default function Sidebar({ open, activeView, setActiveView }) {
                   ...(active ? styles.standaloneActive : {}),
                 }}
               >
-                <i className={`ti ${node.icon}`} aria-hidden="true" style={{ fontSize: '18px', color: '#C9A84C', flexShrink: 0 }} />
-                <span style={{ color: '#C9A84C' }}>{node.label}</span>
+                <i className={`ti ${node.icon}`} aria-hidden="true" style={{ fontSize: '18px', color: active ? '#C9A84C' : '#C9A84C', flexShrink: 0 }} />
+                <span style={{ color: '#ffffff' }}>{node.label}</span>
               </button>
             )
           }
