@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useAuth } from '../lib/AuthContext'
-import { supabase } from '../../supabase'
+import { supabase } from '../lib/supabase'
 
 const NAV = [
   {
