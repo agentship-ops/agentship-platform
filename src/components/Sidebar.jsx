@@ -187,7 +187,7 @@ export default function Sidebar({ open, activeView, setActiveView }) {
             {profile ? `${profile.first_name} ${profile.last_name}` : 'Agent'}
           </div>
           <div style={{ fontSize: '11px', color: '#777777', marginTop: '1px' }}>
-            {profile?.role === 'leader' ? 'Leader' : 'Professional'}
+            {profile?.title || 'Professional'}
           </div>
         </div>
         <button onClick={signOut} aria-label="Sign out" style={styles.signOutBtn}>
