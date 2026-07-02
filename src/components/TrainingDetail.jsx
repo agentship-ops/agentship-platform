@@ -62,18 +62,20 @@ export default function TrainingDetail({ slug }) {
       {resources.length > 0 && (
         <div style={styles.resources}>
           <h2 style={styles.resourcesTitle}>Resources</h2>
-          {resources.map(r => (
-            
-              key={r.id}
-              href={r.file_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={styles.resourceLink}
-            >
-              <i className="ti ti-file-download" aria-hidden="true" style={styles.resourceIcon} />
-              <span>{r.label}</span>
-            </a>
-          ))}
+          {resources.map(function (r) {
+            return (
+              
+                key={r.id}
+                href={r.file_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={styles.resourceLink}
+              >
+                <i className="ti ti-file-download" aria-hidden="true" style={styles.resourceIcon} />
+                <span>{r.label}</span>
+              </a>
+            )
+          })}
         </div>
       )}
     </div>
