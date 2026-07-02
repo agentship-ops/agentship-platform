@@ -64,16 +64,14 @@ export default function TrainingDetail({ slug }) {
           <h2 style={styles.resourcesTitle}>Resources</h2>
           {resources.map(function (r) {
             return (
-              
+              <button
                 key={r.id}
-                href={r.file_url}
-                target="_blank"
-                rel="noopener noreferrer"
+                onClick={function () { window.open(r.file_url, '_blank', 'noopener,noreferrer') }}
                 style={styles.resourceLink}
               >
                 <i className="ti ti-file-download" aria-hidden="true" style={styles.resourceIcon} />
                 <span>{r.label}</span>
-              </a>
+              </button>
             )
           })}
         </div>
@@ -132,6 +130,7 @@ const styles = {
     marginBottom: '4px',
   },
   resourceLink: {
+    width: '100%',
     display: 'flex',
     alignItems: 'center',
     gap: '10px',
@@ -142,6 +141,9 @@ const styles = {
     color: '#FFFFFF',
     fontSize: '13px',
     fontWeight: '500',
+    fontFamily: 'Montserrat, sans-serif',
+    textAlign: 'left',
+    cursor: 'pointer',
   },
   resourceIcon: {
     color: '#C9A84C',
