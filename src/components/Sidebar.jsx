@@ -50,7 +50,7 @@ const NAV = [
     type: 'section',
     id: 'training',
     label: 'Training',
-    icon: 'ti-camera',
+    icon: 'ti-video',
     defaultOpen: true,
     items: [
       { id: 'mastery', label: 'Platform Road to Mastery', icon: 'ti-player-play' },
