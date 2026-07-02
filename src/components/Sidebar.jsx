@@ -1,6 +1,5 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { useAuth } from '../lib/AuthContext'
-import { supabase } from '../lib/supabase'
 
 const NAV = [
   {
@@ -29,10 +28,8 @@ const NAV = [
     icon: 'ti-users',
     defaultOpen: true,
     items: [
-      { id: 'welcome', label: 'Welcome', icon: 'ti-user-plus' },
-      { id: 'updates', label: 'Updates', icon: 'ti-speakerphone' },
       { id: 'events', label: 'Events', icon: 'ti-calendar' },
-      { id: 'celebrate', label: 'Celebrate', icon: 'ti-confetti' },
+      { id: 'bulletin', label: 'The Bulletin', icon: 'ti-news' },
       { id: 'referrals', label: 'Referrals', icon: 'ti-arrows-right-left' },
     ],
   },
@@ -97,28 +94,6 @@ export default function Sidebar({ open, activeView, setActiveView }) {
   const initials = profile
     ? `${profile.first_name?.[0] ?? ''}${profile.last_name?.[0] ?? ''}`
     : '?'
-
-  const fileInputRef = useRef(null)
-  const [uploading, setUploading] = useState(false)
-  const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url || null)
-
-  async function handleAvatarUpload(e) {
-    const file = e.target.files?.[0]
-    if (!file || !profile) return
-    setUploading(true)
-    const ext = file.name.split('.').pop()
-    const path = `${profile.id}/avatar.${ext}`
-    const { error: uploadError } = await supabase.storage
-      .from('avatars')
-      .upload(path, file, { upsert: true })
-    if (!uploadError) {
-      const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-      const publicUrl = `${data.publicUrl}?t=${Date.now()}`
-      await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', profile.id)
-      setAvatarUrl(publicUrl)
-    }
-    setUploading(false)
-  }
 
   function toggleSection(id) {
     setOpenSections(prev => ({ ...prev, [id]: !prev[id] }))
@@ -204,39 +179,17 @@ export default function Sidebar({ open, activeView, setActiveView }) {
       </nav>
 
       <div style={styles.footer}>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          style={{ display: 'none' }}
-          onChange={handleAvatarUpload}
-        />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          aria-label="Upload profile photo"
-          title="Click to upload photo"
-          style={styles.avatarBtn}
-        >
-          {avatarUrl ? (
-            <img src={avatarUrl} alt="Profile" style={styles.avatarImg} />
-          ) : (
-            <span>{uploading ? '...' : initials}</span>
-          )}
-        </button>
+        <div style={styles.avatar}>{initials}</div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>
             {profile ? `${profile.first_name} ${profile.last_name}` : 'Agent'}
           </div>
           <div style={{ fontSize: '11px', color: '#777777', marginTop: '1px' }}>
-            {profile?.title || 'Professional'}
+            {profile?.role === 'leader' ? 'Leader' : 'Professional'}
           </div>
         </div>
         <button onClick={signOut} aria-label="Sign out" style={styles.signOutBtn}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-            <polyline points="16 17 21 12 16 7"/>
-            <line x1="21" y1="12" x2="9" y2="12"/>
-          </svg>
+          <i className="ti ti-logout" aria-hidden="true" />
         </button>
       </div>
     </aside>
@@ -345,9 +298,9 @@ const styles = {
     gap: '10px',
     flexShrink: 0,
   },
-  avatarBtn: {
-    width: '34px',
-    height: '34px',
+  avatar: {
+    width: '32px',
+    height: '32px',
     borderRadius: '50%',
     background: '#C9A84C',
     color: '#0A0A0A',
@@ -357,17 +310,6 @@ const styles = {
     fontSize: '11px',
     fontWeight: '700',
     flexShrink: 0,
-    border: 'none',
-    cursor: 'pointer',
-    overflow: 'hidden',
-    padding: 0,
-  },
-  avatarImg: {
-    width: '34px',
-    height: '34px',
-    borderRadius: '50%',
-    objectFit: 'cover',
-    display: 'block',
   },
   signOutBtn: {
     width: '32px',
@@ -384,4 +326,3 @@ const styles = {
     fontFamily: 'Montserrat, sans-serif',
   },
 }
-
