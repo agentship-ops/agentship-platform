@@ -28,8 +28,10 @@ const NAV = [
     icon: 'ti-users',
     defaultOpen: true,
     items: [
+      { id: 'welcome', label: 'Welcome', icon: 'ti-user-plus' },
+      { id: 'updates', label: 'Updates', icon: 'ti-speakerphone' },
       { id: 'events', label: 'Events', icon: 'ti-calendar' },
-      { id: 'bulletin', label: 'The Bulletin', icon: 'ti-news' },
+      { id: 'celebrate', label: 'Celebrate', icon: 'ti-confetti' },
       { id: 'referrals', label: 'Referrals', icon: 'ti-arrows-right-left' },
     ],
   },
@@ -48,19 +50,10 @@ const NAV = [
     type: 'section',
     id: 'training',
     label: 'Training',
-    icon: 'ti-map',
+    icon: 'ti-camera',
     defaultOpen: true,
     items: [
-      { id: 'mastery', label: 'Platform Road to Mastery', icon: 'ti-map' },
-    ],
-  },
-  {
-    type: 'section',
-    id: 'trainlib',
-    label: 'Training Library',
-    icon: 'ti-video',
-    defaultOpen: false,
-    items: [
+      { id: 'mastery', label: 'Platform Road to Mastery', icon: 'ti-player-play' },
       { id: 'tlib-1', label: 'Winning in Real Estate', icon: 'ti-player-play' },
       { id: 'tlib-2', label: 'Time Blocking & Scheduling', icon: 'ti-player-play' },
       { id: 'tlib-3', label: 'Language of Sales', icon: 'ti-player-play' },
