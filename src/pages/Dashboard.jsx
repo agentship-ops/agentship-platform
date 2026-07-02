@@ -4,6 +4,7 @@ import { useAuth } from '../lib/AuthContext'
 import TopBar from '../components/TopBar'
 import Sidebar from '../components/Sidebar'
 import Leaderboard from '../components/Leaderboard'
+import Events from '../components/Events'
 import ComingSoon from '../components/ComingSoon'
 
 const VIEWS = {
@@ -12,7 +13,7 @@ const VIEWS = {
   atlas: <ComingSoon title="Atlas" icon="ti-robot" description="Your AI teammate. Update leads, log notes, and move deals forward — here or by text from the field." phase="Phase 2" />,
   goal: <ComingSoon title="Goal Tracker" icon="ti-chart-bar" description="Your goals vs actual activity. See where you're on track and where to push." phase="Phase 2" />,
   pl: <ComingSoon title="P&L" icon="ti-cash" description="Your income, expenses, and what you're actually keeping." phase="Phase 2" />,
-  events: <ComingSoon title="Events" icon="ti-calendar" description="Calendar view. Leaders create events, agents see and RSVP." phase="Phase 2" />,
+  events: <Events />,
   bulletin: <ComingSoon title="The Bulletin" icon="ti-news" description="Welcomes, announcements, and wins — all in one place." phase="Phase 2" />,
   referrals: <ComingSoon title="Referrals" icon="ti-arrows-right-left" description="Post and claim referral opportunities — post-based space." phase="Phase 2" />,
   'ch-agentship': <ComingSoon title="# Agentship" icon="ti-message-circle" description="Team-wide channel. Built out in Phase 2." phase="Phase 2" />,
