@@ -6,6 +6,7 @@ import Sidebar from '../components/Sidebar'
 import Leaderboard from '../components/Leaderboard'
 import ComingSoon from '../components/ComingSoon'
 import TrainingDetail from '../components/TrainingDetail'
+import Channels from '../components/Channels'
 
 const VIEWS = {
   leaderboard: <Leaderboard />,
@@ -18,7 +19,7 @@ const VIEWS = {
   events: <ComingSoon title="Events" icon="ti-calendar" description="Calendar view. Leaders create events, agents see and RSVP." phase="Phase 2" />,
   celebrate: <ComingSoon title="Celebrate" icon="ti-confetti" description="Post wins, milestones, and shoutouts. Anyone on the team can post." phase="Phase 2" />,
   referrals: <ComingSoon title="Referrals" icon="ti-arrows-right-left" description="Post and claim referral opportunities — post-based space." phase="Phase 2" />,
-  'ch-agentship': <ComingSoon title="# Agentship" icon="ti-message-circle" description="Team-wide channel. Built out in Phase 2." phase="Phase 2" />,
+  'ch-agentship': <Channels />,
   'ch-westcobb': <ComingSoon title="# West Cobb" icon="ti-message-circle" description="Channel for the West Cobb market. Built out in Phase 2." phase="Phase 2" />,
   mastery: <TrainingDetail slug="mastery" />,
   'tlib-1': <TrainingDetail slug="tlib-1" />,
