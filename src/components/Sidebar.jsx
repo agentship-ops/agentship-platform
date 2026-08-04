@@ -95,10 +95,18 @@ export default function Sidebar({ open, activeView, setActiveView }) {
     ? `${profile.first_name?.[0] ?? ''}${profile.last_name?.[0] ?? ''}`
     : '?'
 
-  const roleLabel =
-    profile?.role === 'admin' ? 'Admin'
-    : profile?.role === 'leader' ? 'Leader'
-    : 'Professional'
+  // `role` is the job title shown under the name (Director of Operations, CEO, Agent).
+  // `account_type` is the permission level (admin, leader, agent) and is never displayed.
+  const ACCOUNT_TYPE_FALLBACK = {
+    admin: 'Admin',
+    leader: 'Leader',
+    agent: 'Agent',
+  }
+
+  const displayTitle =
+    profile?.role?.trim()
+    || ACCOUNT_TYPE_FALLBACK[profile?.account_type]
+    || 'Agent'
 
   function toggleSection(id) {
     setOpenSections(prev => ({ ...prev, [id]: !prev[id] }))
@@ -190,7 +198,7 @@ export default function Sidebar({ open, activeView, setActiveView }) {
             {profile ? `${profile.first_name} ${profile.last_name}` : 'Agent'}
           </div>
           <div style={{ fontSize: '11px', color: '#777777', marginTop: '1px' }}>
-            {roleLabel}
+            {displayTitle}
           </div>
         </div>
         <button onClick={signOut} aria-label="Sign out" style={styles.signOutBtn}>
