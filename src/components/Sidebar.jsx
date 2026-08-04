@@ -28,10 +28,8 @@ const NAV = [
     icon: 'ti-users',
     defaultOpen: true,
     items: [
-      { id: 'welcome', label: 'Welcome', icon: 'ti-user-plus' },
-      { id: 'updates', label: 'Updates', icon: 'ti-speakerphone' },
       { id: 'events', label: 'Events', icon: 'ti-calendar' },
-      { id: 'celebrate', label: 'Celebrate', icon: 'ti-confetti' },
+      { id: 'bullpen', label: 'Bullpen', icon: 'ti-speakerphone' },
       { id: 'referrals', label: 'Referrals', icon: 'ti-arrows-right-left' },
     ],
   },
@@ -50,10 +48,19 @@ const NAV = [
     type: 'section',
     id: 'training',
     label: 'Training',
-    icon: 'ti-video',
+    icon: 'ti-map',
     defaultOpen: true,
     items: [
-      { id: 'mastery', label: 'Platform Road to Mastery', icon: 'ti-player-play' },
+      { id: 'mastery', label: 'Platform Road to Mastery', icon: 'ti-map' },
+    ],
+  },
+  {
+    type: 'section',
+    id: 'trainlib',
+    label: 'Training Library',
+    icon: 'ti-video',
+    defaultOpen: false,
+    items: [
       { id: 'tlib-1', label: 'Winning in Real Estate', icon: 'ti-player-play' },
       { id: 'tlib-2', label: 'Time Blocking & Scheduling', icon: 'ti-player-play' },
       { id: 'tlib-3', label: 'Language of Sales', icon: 'ti-player-play' },
@@ -88,6 +95,11 @@ export default function Sidebar({ open, activeView, setActiveView }) {
     ? `${profile.first_name?.[0] ?? ''}${profile.last_name?.[0] ?? ''}`
     : '?'
 
+  const roleLabel =
+    profile?.role === 'admin' ? 'Admin'
+    : profile?.role === 'leader' ? 'Leader'
+    : 'Professional'
+
   function toggleSection(id) {
     setOpenSections(prev => ({ ...prev, [id]: !prev[id] }))
   }
@@ -113,8 +125,8 @@ export default function Sidebar({ open, activeView, setActiveView }) {
                   ...(active ? styles.standaloneActive : {}),
                 }}
               >
-                <i className={`ti ${node.icon}`} aria-hidden="true" style={{ fontSize: '18px', color: active ? '#C9A84C' : '#C9A84C', flexShrink: 0 }} />
-                <span style={{ color: active ? '#C9A84C' : '#C9A84C' }}>{node.label}</span>
+                <i className={`ti ${node.icon}`} aria-hidden="true" style={{ fontSize: '18px', color: '#C9A84C', flexShrink: 0 }} />
+                <span style={{ color: '#C9A84C' }}>{node.label}</span>
               </button>
             )
           }
@@ -178,7 +190,7 @@ export default function Sidebar({ open, activeView, setActiveView }) {
             {profile ? `${profile.first_name} ${profile.last_name}` : 'Agent'}
           </div>
           <div style={{ fontSize: '11px', color: '#777777', marginTop: '1px' }}>
-            {profile?.role === 'leader' ? 'Leader' : 'Professional'}
+            {roleLabel}
           </div>
         </div>
         <button onClick={signOut} aria-label="Sign out" style={styles.signOutBtn}>
