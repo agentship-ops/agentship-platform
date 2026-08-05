@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { supabase } from '../lib/supabase'
 
 function IconMenu() {
   return (
@@ -28,11 +29,62 @@ function IconGear() {
   )
 }
 
-export default function TopBar({ onToggleSidebar }) {
+const CHANNEL_TO_VIEW = { agentship: 'ch-agentship' }
+const CHANNEL_LABEL = { agentship: '# Agentship' }
+
+function actorName(n) {
+  return `${n.actor_first || 'Someone'}${n.actor_last ? ' ' + n.actor_last : ''}`
+}
+
+function timeAgo(iso) {
+  const secs = Math.max(1, Math.floor((Date.now() - new Date(iso).getTime()) / 1000))
+  if (secs < 60) return 'just now'
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  return `${days}d ago`
+}
+
+export default function TopBar({ onToggleSidebar, onNavigate }) {
   const [notifOpen, setNotifOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [currentUser, setCurrentUser] = useState(null)
+  const [notifications, setNotifications] = useState([])
   const notifRef = useRef(null)
   const settingsRef = useRef(null)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setCurrentUser(data?.session?.user ?? null))
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setCurrentUser(session?.user ?? null)
+    })
+    return () => { sub?.subscription?.unsubscribe() }
+  }, [])
+
+  const loadNotifs = useCallback(async () => {
+    if (!currentUser) return
+    const { data } = await supabase
+      .from('notifications')
+      .select('id, type, actor_first, actor_last, channel, message_id, preview, read, created_at')
+      .eq('user_id', currentUser.id)
+      .order('created_at', { ascending: false })
+      .limit(30)
+    setNotifications(data || [])
+  }, [currentUser])
+
+  useEffect(() => {
+    loadNotifs()
+    if (!currentUser) return
+    const ch = supabase
+      .channel('rt-notifications')
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${currentUser.id}` },
+        loadNotifs)
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [loadNotifs, currentUser])
 
   useEffect(() => {
     function handleClick(e) {
@@ -42,6 +94,28 @@ export default function TopBar({ onToggleSidebar }) {
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
+
+  const unreadCount = notifications.filter(n => !n.read).length
+
+  async function markAllRead() {
+    if (!currentUser || unreadCount === 0) return
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+    await supabase.from('notifications').update({ read: true })
+      .eq('user_id', currentUser.id).eq('read', false)
+  }
+
+  function toggleBell() {
+    const willOpen = !notifOpen
+    setNotifOpen(willOpen)
+    setSettingsOpen(false)
+    if (willOpen) markAllRead()
+  }
+
+  function openNotification(n) {
+    setNotifOpen(false)
+    const view = CHANNEL_TO_VIEW[n.channel] || 'ch-agentship'
+    if (onNavigate) onNavigate(view)
+  }
 
   return (
     <div style={styles.topbar}>
@@ -60,15 +134,33 @@ export default function TopBar({ onToggleSidebar }) {
           <button
             aria-label="Notifications"
             style={styles.iconBtn}
-            onClick={() => { setNotifOpen(o => !o); setSettingsOpen(false) }}
+            onClick={toggleBell}
           >
             <IconBell />
           </button>
-          <span style={styles.notifDot} />
+          {unreadCount > 0 && <span style={styles.notifDot} />}
           {notifOpen && (
             <div style={styles.dropdown}>
               <p style={styles.dropdownTitle}>Notifications</p>
-              <p style={styles.dropdownEmpty}>You're all caught up.</p>
+              {notifications.length === 0 ? (
+                <p style={styles.dropdownEmpty}>You're all caught up.</p>
+              ) : (
+                <div style={styles.notifList}>
+                  {notifications.map(n => (
+                    <button key={n.id} style={styles.notifItem} onClick={() => openNotification(n)}>
+                      <span style={styles.notifLine}>
+                        <strong style={{ color: '#fff', fontWeight: 600 }}>{actorName(n)}</strong>
+                        {n.type === 'reaction'
+                          ? <> reacted <span>{n.preview}</span></>
+                          : <> replied to you</>}
+                      </span>
+                      <span style={styles.notifSub}>
+                        {CHANNEL_LABEL[n.channel] || '# Agentship'} · {timeAgo(n.created_at)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -160,7 +252,7 @@ const styles = {
     position: 'absolute',
     top: '44px',
     right: '-8px',
-    width: '210px',
+    width: '260px',
     background: '#1E1E1E',
     border: '0.5px solid #2a2a2a',
     borderRadius: '10px',
@@ -182,5 +274,35 @@ const styles = {
     color: '#555',
     fontFamily: 'Montserrat, sans-serif',
     lineHeight: 1.5,
+  },
+  notifList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+    maxHeight: '320px',
+    overflowY: 'auto',
+    margin: '0 -8px',
+  },
+  notifItem: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+    width: '100%',
+    textAlign: 'left',
+    background: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    padding: '9px 8px',
+    borderRadius: '7px',
+    fontFamily: 'Montserrat, sans-serif',
+  },
+  notifLine: {
+    fontSize: '13px',
+    color: '#ccc',
+    lineHeight: 1.4,
+  },
+  notifSub: {
+    fontSize: '11px',
+    color: '#777',
   },
 }

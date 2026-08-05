@@ -47,6 +47,7 @@ export default function Channels() {
 
     setMessages((msgs || []).map(m => ({ ...m, reactions: byMsg[m.id] || {} })))
     setLoading(false)
+    if (currentUser) { supabase.rpc('mark_channel_read', { p_channel: CHANNEL }) }
   }, [currentUser])
 
   useEffect(() => {

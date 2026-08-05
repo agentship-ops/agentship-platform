@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../lib/AuthContext'
+import { supabase } from '../lib/supabase'
 
 const NAV = [
   {
@@ -89,6 +90,35 @@ export default function Sidebar({ open, activeView, setActiveView }) {
     NAV.forEach(n => { if (n.type === 'section') defaults[n.id] = n.defaultOpen })
     return defaults
   })
+  const [agentshipUnread, setAgentshipUnread] = useState(0)
+
+  // Live unread count for # Agentship (everyone's messages but yours, since you last opened it).
+  useEffect(() => {
+    let alive = true
+    async function refresh() {
+      const { data, error } = await supabase.rpc('channel_unread_count', { p_channel: 'agentship' })
+      if (alive && !error) setAgentshipUnread(data || 0)
+    }
+    refresh()
+    const ch = supabase
+      .channel('rt-sidebar-unread')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: 'channel=eq.agentship' }, refresh)
+      .subscribe()
+    return () => { alive = false; supabase.removeChannel(ch) }
+  }, [])
+
+  // Zero it out the moment you open the channel; recompute shortly after you leave.
+  useEffect(() => {
+    if (activeView === 'ch-agentship') {
+      setAgentshipUnread(0)
+      return
+    }
+    const t = setTimeout(async () => {
+      const { data } = await supabase.rpc('channel_unread_count', { p_channel: 'agentship' })
+      setAgentshipUnread(data || 0)
+    }, 500)
+    return () => clearTimeout(t)
+  }, [activeView])
 
   const initials = profile
     ? `${profile.first_name?.[0] ?? ''}${profile.last_name?.[0] ?? ''}`
@@ -164,6 +194,8 @@ export default function Sidebar({ open, activeView, setActiveView }) {
                   <div style={styles.subItems}>
                     {node.items.map(item => {
                       const active = activeView === item.id
+                      const showAgentshipCount =
+                        item.id === 'ch-agentship' && agentshipUnread > 0 && activeView !== 'ch-agentship'
                       return (
                         <button
                           key={item.id}
@@ -175,6 +207,9 @@ export default function Sidebar({ open, activeView, setActiveView }) {
                         >
                           <i className={`ti ${item.icon}`} aria-hidden="true" style={{ fontSize: '17px', color: '#aaaaaa', flexShrink: 0 }} />
                           <span style={{ color: '#ffffff' }}>{item.label}</span>
+                          {showAgentshipCount && (
+                            <span style={styles.badge}>{agentshipUnread}</span>
+                          )}
                           {item.badge && (
                             <span style={styles.badge}>{item.badge}</span>
                           )}
