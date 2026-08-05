@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { enablePush, currentPermission } from '../lib/push'
 
 function IconMenu() {
   return (
@@ -52,6 +53,8 @@ export default function TopBar({ onToggleSidebar, onNavigate }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
   const [notifications, setNotifications] = useState([])
+  const [pushMsg, setPushMsg] = useState('')
+  const [pushBusy, setPushBusy] = useState(false)
   const notifRef = useRef(null)
   const settingsRef = useRef(null)
 
@@ -117,6 +120,20 @@ export default function TopBar({ onToggleSidebar, onNavigate }) {
     if (onNavigate) onNavigate(view)
   }
 
+  async function handleEnablePush() {
+    setPushBusy(true)
+    setPushMsg('Setting up...')
+    const res = await enablePush()
+    setPushMsg(res.message)
+    setPushBusy(false)
+  }
+
+  const perm = currentPermission()
+  const pushButtonLabel =
+    perm === 'granted' ? 'Notifications are on'
+    : perm === 'denied' ? 'Blocked — enable in device settings'
+    : 'Turn on notifications'
+
   return (
     <div style={styles.topbar}>
 
@@ -174,9 +191,20 @@ export default function TopBar({ onToggleSidebar, onNavigate }) {
             <IconGear />
           </button>
           {settingsOpen && (
-            <div style={{ ...styles.dropdown, right: 0 }}>
+            <div style={{ ...styles.dropdown, right: 0, width: '250px' }}>
               <p style={styles.dropdownTitle}>Settings</p>
-              <p style={styles.dropdownEmpty}>Platform settings coming soon.</p>
+              <p style={styles.settingsLabel}>Push notifications</p>
+              <p style={styles.settingsHint}>
+                Get an alert on this device when there's a new message, even when the platform is closed.
+              </p>
+              <button
+                style={{ ...styles.enableBtn, opacity: pushBusy || perm === 'granted' ? 0.6 : 1 }}
+                onClick={handleEnablePush}
+                disabled={pushBusy || perm === 'granted'}
+              >
+                {pushButtonLabel}
+              </button>
+              {pushMsg && <p style={styles.pushMsg}>{pushMsg}</p>}
             </div>
           )}
         </div>
@@ -304,5 +332,39 @@ const styles = {
   notifSub: {
     fontSize: '11px',
     color: '#777',
+  },
+  settingsLabel: {
+    fontSize: '13px',
+    fontWeight: '600',
+    color: '#fff',
+    fontFamily: 'Montserrat, sans-serif',
+    marginBottom: '4px',
+  },
+  settingsHint: {
+    fontSize: '11px',
+    color: '#888',
+    lineHeight: 1.5,
+    marginBottom: '12px',
+    fontFamily: 'Montserrat, sans-serif',
+  },
+  enableBtn: {
+    width: '100%',
+    padding: '10px',
+    background: '#C9A84C',
+    color: '#0A0A0A',
+    borderRadius: '8px',
+    fontSize: '12px',
+    fontWeight: '700',
+    letterSpacing: '0.5px',
+    border: 'none',
+    cursor: 'pointer',
+    fontFamily: 'Montserrat, sans-serif',
+  },
+  pushMsg: {
+    fontSize: '11px',
+    color: '#aaa',
+    lineHeight: 1.5,
+    marginTop: '10px',
+    fontFamily: 'Montserrat, sans-serif',
   },
 }
