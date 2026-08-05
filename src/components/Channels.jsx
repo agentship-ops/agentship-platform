@@ -115,7 +115,7 @@ export default function Channels() {
 
   function renderMessage(m, reply) {
     const isSelf = currentUser && m.user_id === currentUser.id
-    const tag = isSelf ? 'you' : roleTag(m.author_role)
+    const tag = isSelf ? 'you' : null
     const rx = Object.entries(m.reactions || {})
     return (
       <div
