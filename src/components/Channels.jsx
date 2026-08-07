@@ -13,6 +13,8 @@ export default function Channels() {
   const [pickerFor, setPickerFor] = useState(null)
   const [loading, setLoading] = useState(true)
   const [myAccountType, setMyAccountType] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [editText, setEditText] = useState('')
   const endRef = useRef(null)
 
   // Read the logged-in user straight from Supabase, independent of AuthContext.
@@ -112,6 +114,16 @@ export default function Channels() {
     load()
   }
 
+  function startEdit(m) { setEditingId(m.id); setEditText(m.body); setPickerFor(null) }
+  function cancelEdit() { setEditingId(null); setEditText('') }
+  async function saveEdit(m) {
+    const body = editText.trim()
+    if (!body) return
+    setEditingId(null)
+    await supabase.from('messages').update({ body }).eq('id', m.id)
+    load()
+  }
+
   const initials = (m) =>
     `${(m.author_first?.[0] || '').toUpperCase()}${(m.author_last?.[0] || '').toUpperCase()}` || '?'
   const name = (m) =>
@@ -155,6 +167,11 @@ export default function Channels() {
                 <button style={styles.actBtn} onClick={() => { setReplyingTo(m); setPickerFor(null) }} aria-label="Reply">
                   <i className="ti ti-corner-up-left" aria-hidden="true" />
                 </button>
+                {currentUser && m.user_id === currentUser.id && (
+                  <button style={styles.actBtn} onClick={() => startEdit(m)} aria-label="Edit">
+                    <i className="ti ti-pencil" aria-hidden="true" />
+                  </button>
+                )}
                 {canDelete(m) && (
                   <button style={styles.actBtn} onClick={() => deleteMessage(m)} aria-label="Delete">
                     <i className="ti ti-trash" aria-hidden="true" />
@@ -175,7 +192,26 @@ export default function Channels() {
             {tag && <span style={styles.tag}>{tag}</span>}
             <span style={styles.time}>{time(m.created_at)}</span>
           </div>
-          <div style={{ ...styles.text, ...(reply ? styles.textSm : {}) }}>{m.body}</div>
+          {editingId === m.id ? (
+            <div style={styles.editWrap}>
+              <input
+                style={styles.editInput}
+                value={editText}
+                onChange={e => setEditText(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(m) }
+                  if (e.key === 'Escape') { cancelEdit() }
+                }}
+                autoFocus
+              />
+              <div style={styles.editBtns}>
+                <button style={styles.editSave} onClick={() => saveEdit(m)}>Save</button>
+                <button style={styles.editCancel} onClick={cancelEdit}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ ...styles.text, ...(reply ? styles.textSm : {}) }}>{m.body}</div>
+          )}
           {rx.length > 0 && (
             <div style={styles.reactions}>
               {rx.map(([emoji, info]) => (
@@ -294,6 +330,11 @@ const styles = {
   time: { fontSize: '10px', color: '#555' },
   text: { fontSize: '14px', lineHeight: 1.55, color: '#e8e8e8', whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
   textSm: { fontSize: '13px' },
+  editWrap: { marginTop: '2px' },
+  editInput: { width: '100%', background: '#1E1E1E', border: '0.5px solid #333', borderRadius: '8px', color: '#fff', fontSize: '14px', fontFamily: 'Montserrat, sans-serif', padding: '9px 12px', outline: 'none' },
+  editBtns: { display: 'flex', gap: '8px', marginTop: '6px' },
+  editSave: { background: '#C9A84C', color: '#0A0A0A', border: 'none', borderRadius: '7px', padding: '6px 14px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif' },
+  editCancel: { background: 'transparent', color: '#888', border: '0.5px solid #333', borderRadius: '7px', padding: '6px 14px', fontSize: '12px', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif' },
   actions: { position: 'absolute', top: '-6px', right: 0, display: 'flex', gap: '2px', background: '#161616', border: '0.5px solid #333', borderRadius: '8px', padding: '2px', zIndex: 2 },
   actBtn: { width: '28px', height: '28px', borderRadius: '6px', background: 'transparent', color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', border: 'none', cursor: 'pointer' },
   actEmoji: { width: '30px', height: '28px', borderRadius: '6px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
