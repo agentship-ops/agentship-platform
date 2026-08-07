@@ -1,12 +1,14 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
+import { supabase } from '../lib/supabase'
 import TopBar from '../components/TopBar'
 import Sidebar from '../components/Sidebar'
 import Leaderboard from '../components/Leaderboard'
 import ComingSoon from '../components/ComingSoon'
 import TrainingDetail from '../components/TrainingDetail'
 import Channels from '../components/Channels'
+import Messages from '../components/Messages'
 
 const VIEWS = {
   leaderboard: <Leaderboard />,
@@ -37,6 +39,54 @@ export default function Dashboard() {
   const { user, loading } = useAuth()
   const [activeView, setActiveView] = useState('leaderboard')
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [dmUnread, setDmUnread] = useState(0)
+
+  // DM unread count, kept live so the message icon badge is accurate
+  // even when the Messages view isn't open.
+  const loadDmUnread = useCallback(async () => {
+    if (!user) return
+    const me = user.id
+    const { data: convs } = await supabase
+      .from('dm_conversations')
+      .select('id, last_message_at')
+    if (!convs || !convs.length) { setDmUnread(0); return }
+
+    const ids = convs.map(c => c.id)
+    const { data: reads } = await supabase
+      .from('dm_reads')
+      .select('conversation_id, last_read_at')
+      .eq('user_id', me)
+    const readMap = {}
+    ;(reads || []).forEach(r => { readMap[r.conversation_id] = r.last_read_at })
+
+    const { data: recent } = await supabase
+      .from('dm_messages')
+      .select('conversation_id, user_id, created_at')
+      .in('conversation_id', ids)
+      .order('created_at', { ascending: false })
+      .limit(400)
+    const latest = {}
+    ;(recent || []).forEach(m => { if (!latest[m.conversation_id]) latest[m.conversation_id] = m })
+
+    let count = 0
+    convs.forEach(c => {
+      const last = latest[c.id]
+      const lastRead = readMap[c.id]
+      if (last && last.user_id !== me && (!lastRead || new Date(last.created_at) > new Date(lastRead))) count++
+    })
+    setDmUnread(count)
+  }, [user])
+
+  useEffect(() => {
+    loadDmUnread()
+    if (!user) return
+    const ch = supabase
+      .channel('rt-dm-unread')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_messages' }, loadDmUnread)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_conversations' }, loadDmUnread)
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [loadDmUnread, user])
 
   if (loading) return (
     <div style={styles.loading}>
@@ -52,6 +102,7 @@ export default function Dashboard() {
         <TopBar
           onToggleSidebar={() => setSidebarOpen(o => !o)}
           onNavigate={setActiveView}
+          dmUnread={dmUnread}
         />
         <div style={styles.body}>
           <Sidebar
@@ -60,7 +111,9 @@ export default function Dashboard() {
             setActiveView={setActiveView}
           />
           <main style={styles.main}>
-            {VIEWS[activeView] ?? <Leaderboard />}
+            {activeView === 'messages'
+              ? <Messages onUnreadChange={setDmUnread} />
+              : (VIEWS[activeView] ?? <Leaderboard />)}
           </main>
         </div>
       </div>

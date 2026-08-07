@@ -12,6 +12,14 @@ function IconMenu() {
   )
 }
 
+function IconMessage() {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+    </svg>
+  )
+}
+
 function IconBell() {
   return (
     <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -37,6 +45,10 @@ function actorName(n) {
   return `${n.actor_first || 'Someone'}${n.actor_last ? ' ' + n.actor_last : ''}`
 }
 
+function isDmNotif(n) {
+  return n.type === 'dm' || n.type === 'dm_reaction' || (n.channel && n.channel.startsWith('dm:'))
+}
+
 function timeAgo(iso) {
   const secs = Math.max(1, Math.floor((Date.now() - new Date(iso).getTime()) / 1000))
   if (secs < 60) return 'just now'
@@ -48,7 +60,7 @@ function timeAgo(iso) {
   return `${days}d ago`
 }
 
-export default function TopBar({ onToggleSidebar, onNavigate }) {
+export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0 }) {
   const [notifOpen, setNotifOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
@@ -116,6 +128,10 @@ export default function TopBar({ onToggleSidebar, onNavigate }) {
 
   function openNotification(n) {
     setNotifOpen(false)
+    if (isDmNotif(n)) {
+      if (onNavigate) onNavigate('messages')
+      return
+    }
     const view = CHANNEL_TO_VIEW[n.channel] || 'ch-agentship'
     if (onNavigate) onNavigate(view)
   }
@@ -147,6 +163,19 @@ export default function TopBar({ onToggleSidebar, onNavigate }) {
 
       <div style={styles.right}>
 
+        <div style={{ position: 'relative' }}>
+          <button
+            aria-label="Messages"
+            style={styles.iconBtn}
+            onClick={() => { if (onNavigate) onNavigate('messages'); setNotifOpen(false); setSettingsOpen(false) }}
+          >
+            <IconMessage />
+          </button>
+          {dmUnread > 0 && (
+            <span style={styles.msgBadge}>{dmUnread > 9 ? '9+' : dmUnread}</span>
+          )}
+        </div>
+
         <div style={{ position: 'relative' }} ref={notifRef}>
           <button
             aria-label="Notifications"
@@ -169,10 +198,14 @@ export default function TopBar({ onToggleSidebar, onNavigate }) {
                         <strong style={{ color: '#fff', fontWeight: 600 }}>{actorName(n)}</strong>
                         {n.type === 'reaction'
                           ? <> reacted <span>{n.preview}</span></>
+                          : n.type === 'dm'
+                          ? <> messaged you</>
+                          : n.type === 'dm_reaction'
+                          ? <> reacted <span>{n.preview}</span></>
                           : <> replied to you</>}
                       </span>
                       <span style={styles.notifSub}>
-                        {CHANNEL_LABEL[n.channel] || '# Agentship'} · {timeAgo(n.created_at)}
+                        {isDmNotif(n) ? 'Direct message' : (CHANNEL_LABEL[n.channel] || '# Agentship')} · {timeAgo(n.created_at)}
                       </span>
                     </button>
                   ))}
@@ -264,6 +297,25 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  msgBadge: {
+    position: 'absolute',
+    top: '2px',
+    right: '2px',
+    minWidth: '15px',
+    height: '15px',
+    padding: '0 4px',
+    borderRadius: '8px',
+    background: '#C9A84C',
+    color: '#0A0A0A',
+    fontSize: '9px',
+    fontWeight: '700',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: '1.5px solid #0f0f0f',
+    pointerEvents: 'none',
+    fontFamily: 'Montserrat, sans-serif',
   },
   notifDot: {
     display: 'block',
