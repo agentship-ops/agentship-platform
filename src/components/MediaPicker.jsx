@@ -2,12 +2,21 @@ import { useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
 // Shared media tool for any composer (Messages, Channels, future post spaces).
-// Handles: photo/video/GIF file upload, and keyword GIF search via Giphy.
-// On success it calls onAttach({ url, type }) where type is image | video | gif.
-// The parent decides what to do with the attachment (send it as a message).
+// Buttons: photo/video, paperclip (any file), and GIF search via Giphy.
+// On success it calls onAttach({ url, type, name }) where type is
+// image | video | gif | file. The parent stages it in the composer so the
+// person can add a caption and send text + attachment together.
 
 const BUCKET = 'channel-media'
 const GIPHY_KEY = import.meta.env.VITE_GIPHY_KEY
+
+function classify(file) {
+  const t = file.type || ''
+  if (t.startsWith('video')) return 'video'
+  if (t === 'image/gif') return 'gif'
+  if (t.startsWith('image')) return 'image'
+  return 'file'
+}
 
 export default function MediaPicker({ pathPrefix, onAttach, disabled }) {
   const [uploading, setUploading] = useState(false)
@@ -15,10 +24,10 @@ export default function MediaPicker({ pathPrefix, onAttach, disabled }) {
   const [q, setQ] = useState('')
   const [gifs, setGifs] = useState([])
   const [loadingGifs, setLoadingGifs] = useState(false)
+  const photoRef = useRef(null)
   const fileRef = useRef(null)
 
-  async function handleFile(e) {
-    const file = e.target.files?.[0]
+  async function upload(file) {
     if (!file) return
     setUploading(true)
     const safe = file.name.replace(/[^\w.-]/g, '_')
@@ -27,12 +36,12 @@ export default function MediaPicker({ pathPrefix, onAttach, disabled }) {
       .from(BUCKET).upload(path, file, { contentType: file.type, upsert: false })
     if (error) { console.error('Upload failed:', error); setUploading(false); return }
     const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path)
-    const type = file.type.startsWith('video') ? 'video'
-      : file.type === 'image/gif' ? 'gif' : 'image'
-    onAttach({ url: pub.publicUrl, type, name: file.name })
+    onAttach({ url: pub.publicUrl, type: classify(file), name: file.name })
     setUploading(false)
-    if (fileRef.current) fileRef.current.value = ''
   }
+
+  async function onPhoto(e) { await upload(e.target.files?.[0]); if (photoRef.current) photoRef.current.value = '' }
+  async function onFile(e) { await upload(e.target.files?.[0]); if (fileRef.current) fileRef.current.value = '' }
 
   async function searchGifs(term) {
     if (!GIPHY_KEY) return
@@ -56,29 +65,24 @@ export default function MediaPicker({ pathPrefix, onAttach, disabled }) {
 
   function pickGif(g) {
     if (!g.url) return
-    onAttach({ url: g.url, type: 'gif' })
+    onAttach({ url: g.url, type: 'gif', name: 'gif' })
     setGifOpen(false)
     setQ('')
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', position: 'relative' }}>
-      <button
-        onClick={() => fileRef.current?.click()}
-        disabled={disabled || uploading}
-        aria-label="Attach photo or video"
-        style={styles.btn}
-      >
+    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative' }}>
+      <button onClick={() => photoRef.current?.click()} disabled={disabled || uploading} aria-label="Photo or video" style={styles.btn}>
         <i className="ti ti-photo" style={{ fontSize: '20px', color: uploading ? '#C9A84C' : '#777' }} aria-hidden="true" />
       </button>
-      <input ref={fileRef} type="file" accept="image/*,video/*,image/gif" onChange={handleFile} style={{ display: 'none' }} />
+      <input ref={photoRef} type="file" accept="image/*,video/*,image/gif" onChange={onPhoto} style={{ display: 'none' }} />
 
-      <button
-        onClick={openGif}
-        disabled={disabled}
-        aria-label="Add a GIF"
-        style={{ ...styles.gifBtn, ...(gifOpen ? styles.gifBtnActive : {}) }}
-      >
+      <button onClick={() => fileRef.current?.click()} disabled={disabled || uploading} aria-label="Attach a file" style={styles.btn}>
+        <i className="ti ti-paperclip" style={{ fontSize: '19px', color: uploading ? '#C9A84C' : '#777' }} aria-hidden="true" />
+      </button>
+      <input ref={fileRef} type="file" onChange={onFile} style={{ display: 'none' }} />
+
+      <button onClick={openGif} disabled={disabled} aria-label="Add a GIF" style={{ ...styles.gifBtn, ...(gifOpen ? styles.gifBtnActive : {}) }}>
         GIF
       </button>
 
@@ -87,18 +91,15 @@ export default function MediaPicker({ pathPrefix, onAttach, disabled }) {
           <div style={styles.searchRow}>
             <i className="ti ti-search" style={{ fontSize: '14px', color: '#555' }} aria-hidden="true" />
             <input
-              autoFocus
-              value={q}
+              autoFocus value={q}
               onChange={e => setQ(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') searchGifs(q) }}
-              placeholder="Search GIFs"
-              style={styles.searchInput}
+              placeholder="Search GIFs" style={styles.searchInput}
             />
             <button onClick={() => setGifOpen(false)} aria-label="Close" style={styles.close}>
               <i className="ti ti-x" style={{ fontSize: '15px', color: '#777' }} aria-hidden="true" />
             </button>
           </div>
-
           {!GIPHY_KEY ? (
             <div style={styles.note}>GIF search isn't set up yet. Add the Giphy key in Vercel to turn it on. You can still attach a GIF file with the photo button.</div>
           ) : loadingGifs ? (

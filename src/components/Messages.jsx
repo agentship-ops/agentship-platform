@@ -2,14 +2,11 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import MediaPicker from './MediaPicker'
 
-// Full-page Direct Messages.
-// Private 1:1 conversations that mirror the channel feature set:
-// full emoji reactions, threaded replies, edit-after-send, photo/video upload,
-// reaction + message notifications. Each person can also delete a whole chat
-// just for themselves. Privacy is enforced in the database (participant-only).
+// Full-page Direct Messages. Private 1:1 with channel-parity features:
+// full emoji reactions, threaded replies, edit-after-send, photo/video/file/GIF
+// with an optional caption, and per-person chat delete that stays deleted.
 
 const GOLD = '#C9A84C'
-const BUCKET = 'channel-media'
 const EMOJIS = ['❤️', '👍', '😂', '🎉', '👏']
 
 function initials(f, l) {
@@ -37,6 +34,7 @@ export default function Messages({ onUnreadChange }) {
   const [activeConv, setActiveConv] = useState(null) // { id, other, clearedAt }
   const [messages, setMessages] = useState([])
   const [draft, setDraft] = useState('')
+  const [pending, setPending] = useState([])
   const [replyTo, setReplyTo] = useState(null)
   const [hoveredId, setHoveredId] = useState(null)
   const [pickerFor, setPickerFor] = useState(null)
@@ -47,13 +45,11 @@ export default function Messages({ onUnreadChange }) {
   const [search, setSearch] = useState('')
 
   const endRef = useRef(null)
+  const lastLenRef = useRef(0)
 
-  // Read the logged-in user straight from Supabase (matches Channels).
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setCurrentUser(data?.session?.user ?? null))
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      setCurrentUser(session?.user ?? null)
-    })
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => setCurrentUser(session?.user ?? null))
     return () => { sub?.subscription?.unsubscribe() }
   }, [])
 
@@ -62,26 +58,21 @@ export default function Messages({ onUnreadChange }) {
   const loadConversations = useCallback(async () => {
     if (!me) return
     const { data: convs } = await supabase
-      .from('dm_conversations')
-      .select('*')
-      .order('last_message_at', { ascending: false })
+      .from('dm_conversations').select('*').order('last_message_at', { ascending: false })
     if (!convs) return
 
     const otherIds = convs.map(c => (c.user_low === me ? c.user_high : c.user_low))
     const profilesById = {}
     if (otherIds.length) {
-      const { data: profs } = await supabase
-        .from('profiles').select('id, first_name, last_name').in('id', otherIds)
+      const { data: profs } = await supabase.from('profiles').select('id, first_name, last_name').in('id', otherIds)
       ;(profs || []).forEach(p => { profilesById[p.id] = p })
     }
 
-    const { data: readRows } = await supabase
-      .from('dm_reads').select('conversation_id, last_read_at').eq('user_id', me)
+    const { data: readRows } = await supabase.from('dm_reads').select('conversation_id, last_read_at').eq('user_id', me)
     const readMap = {}
     ;(readRows || []).forEach(r => { readMap[r.conversation_id] = r.last_read_at })
 
-    const { data: clearedRows } = await supabase
-      .from('dm_cleared').select('conversation_id, cleared_at').eq('user_id', me)
+    const { data: clearedRows } = await supabase.from('dm_cleared').select('conversation_id, cleared_at').eq('user_id', me)
     const clearedMap = {}
     ;(clearedRows || []).forEach(r => { clearedMap[r.conversation_id] = r.cleared_at })
 
@@ -94,9 +85,7 @@ export default function Messages({ onUnreadChange }) {
         .in('conversation_id', convIds)
         .order('created_at', { ascending: false })
         .limit(400)
-      ;(recent || []).forEach(m => {
-        if (!previews[m.conversation_id]) previews[m.conversation_id] = m
-      })
+      ;(recent || []).forEach(m => { if (!previews[m.conversation_id]) previews[m.conversation_id] = m })
     }
 
     const shaped = convs.map(c => {
@@ -104,8 +93,7 @@ export default function Messages({ onUnreadChange }) {
       const last = previews[c.id]
       const lastRead = readMap[c.id]
       const clearedAt = clearedMap[c.id]
-      const unread = last && last.user_id !== me &&
-        (!lastRead || new Date(last.created_at) > new Date(lastRead))
+      const unread = last && last.user_id !== me && (!lastRead || new Date(last.created_at) > new Date(lastRead))
       return {
         id: c.id,
         last_message_at: c.last_message_at,
@@ -114,9 +102,7 @@ export default function Messages({ onUnreadChange }) {
         preview: last ? previewText(last) : '',
         unread: !!unread,
       }
-    })
-    // Hide chats the user cleared, until a newer message arrives.
-    .filter(c => !c.clearedAt || new Date(c.last_message_at) > new Date(c.clearedAt))
+    }).filter(c => !c.clearedAt || new Date(c.last_message_at) > new Date(c.clearedAt))
 
     setConversations(shaped)
     if (onUnreadChange) onUnreadChange(shaped.filter(c => c.unread).length)
@@ -126,30 +112,23 @@ export default function Messages({ onUnreadChange }) {
     if (m.deleted_at) return 'Message deleted'
     if (m.body) return m.body
     const atts = m.attachments || []
-    if (atts.length) return atts[0].type === 'video' ? 'Video' : 'Photo'
+    if (atts.length) return atts[0].type === 'video' ? 'Video' : atts[0].type === 'file' ? (atts[0].name || 'File') : atts[0].type === 'gif' ? 'GIF' : 'Photo'
     return ''
   }
 
-  // ---- Messages in the open conversation -----------------------------------
+  // ---- Messages ------------------------------------------------------------
 
   const loadMessages = useCallback(async (conv) => {
     if (!conv) return
-    let q = supabase
-      .from('dm_messages')
-      .select('*')
-      .eq('conversation_id', conv.id)
-      .order('created_at', { ascending: true })
-    if (conv.clearedAt) q = q.gt('created_at', conv.clearedAt)
-    const { data } = await q
+    let query = supabase.from('dm_messages').select('*').eq('conversation_id', conv.id).order('created_at', { ascending: true })
+    if (conv.clearedAt) query = query.gt('created_at', conv.clearedAt)
+    const { data } = await query
 
     const msgs = data || []
     const ids = msgs.map(m => m.id)
-    let byMsg = {}
+    const byMsg = {}
     if (ids.length) {
-      const { data: rx } = await supabase
-        .from('dm_message_reactions')
-        .select('message_id, emoji, user_id')
-        .in('message_id', ids)
+      const { data: rx } = await supabase.from('dm_message_reactions').select('message_id, emoji, user_id').in('message_id', ids)
       ;(rx || []).forEach(r => {
         byMsg[r.message_id] = byMsg[r.message_id] || {}
         const cell = byMsg[r.message_id][r.emoji] || { count: 0, mine: false }
@@ -175,18 +154,14 @@ export default function Messages({ onUnreadChange }) {
   }, [me, onUnreadChange])
 
   async function openConversation(entry) {
-    // entry: { id, other, clearedAt }
-    let clearedAt = entry.clearedAt
-    if (clearedAt === undefined) {
-      const { data } = await supabase
-        .from('dm_cleared').select('cleared_at')
-        .eq('conversation_id', entry.id).eq('user_id', me).maybeSingle()
-      clearedAt = data?.cleared_at || null
-    }
-    const conv = { id: entry.id, other: entry.other, clearedAt }
+    // Always look up the person's own cleared point so deleted history never returns.
+    const { data } = await supabase
+      .from('dm_cleared').select('cleared_at')
+      .eq('conversation_id', entry.id).eq('user_id', me).maybeSingle()
+    const conv = { id: entry.id, other: entry.other, clearedAt: data?.cleared_at || null }
     setActiveConv(conv)
-    setEditingId(null)
-    setReplyTo(null)
+    setEditingId(null); setReplyTo(null); setPending([])
+    lastLenRef.current = 0
     loadMessages(conv)
     markRead(conv.id)
   }
@@ -199,11 +174,9 @@ export default function Messages({ onUnreadChange }) {
     if (!activeConv) return
     const ch = supabase
       .channel(`dm-${activeConv.id}`)
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'dm_messages', filter: `conversation_id=eq.${activeConv.id}` },
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_messages', filter: `conversation_id=eq.${activeConv.id}` },
         () => { loadMessages(activeConv); markRead(activeConv.id) })
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'dm_message_reactions' },
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_message_reactions' },
         () => loadMessages(activeConv))
       .subscribe()
     return () => { supabase.removeChannel(ch) }
@@ -211,24 +184,24 @@ export default function Messages({ onUnreadChange }) {
 
   useEffect(() => {
     if (!me) return
-    const ch = supabase
-      .channel('dm-conv-list')
+    const ch = supabase.channel('dm-conv-list')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_conversations' }, () => loadConversations())
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [me, loadConversations])
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  // Only auto-scroll when a new message arrives, so playing videos don't get yanked.
+  useEffect(() => {
+    if (messages.length > lastLenRef.current) endRef.current?.scrollIntoView({ behavior: 'smooth' })
+    lastLenRef.current = messages.length
+  }, [messages])
 
   // ---- Actions -------------------------------------------------------------
 
   async function openPeople() {
-    setShowPicker(true)
-    setSearch('')
+    setShowPicker(true); setSearch('')
     if (!people.length) {
-      const { data } = await supabase
-        .from('profiles').select('id, first_name, last_name')
-        .neq('id', me).order('first_name', { ascending: true })
+      const { data } = await supabase.from('profiles').select('id, first_name, last_name').neq('id', me).order('first_name', { ascending: true })
       setPeople(data || [])
     }
   }
@@ -237,29 +210,22 @@ export default function Messages({ onUnreadChange }) {
     const { data, error } = await supabase.rpc('get_or_create_dm', { other_user: person.id })
     if (error) { console.error(error); return }
     setShowPicker(false)
-    openConversation({ id: data, other: person, clearedAt: null })
+    openConversation({ id: data, other: person })
     loadConversations()
   }
 
+  function addPending(att) { setPending(p => [...p, att]) }
+  function removePending(i) { setPending(p => p.filter((_, j) => j !== i)) }
+
   async function send() {
     const body = draft.trim()
-    if (!body || !activeConv || !me) return
-    setDraft('')
+    if ((!body && pending.length === 0) || !activeConv || !me) return
     const payload = { conversation_id: activeConv.id, user_id: me, body }
+    if (pending.length) payload.attachments = pending
     if (replyTo) payload.parent_id = replyTo.id
-    setReplyTo(null)
+    setDraft(''); setPending([]); setReplyTo(null)
     const { error } = await supabase.from('dm_messages').insert(payload)
     if (error) { console.error('Send failed:', error); setDraft(body) }
-    loadMessages(activeConv)
-  }
-
-  async function sendAttachment(att) {
-    if (!activeConv || !me) return
-    const payload = { conversation_id: activeConv.id, user_id: me, body: '', attachments: [att] }
-    if (replyTo) payload.parent_id = replyTo.id
-    setReplyTo(null)
-    const { error } = await supabase.from('dm_messages').insert(payload)
-    if (error) console.error('Attachment message failed:', error)
     loadMessages(activeConv)
   }
 
@@ -268,11 +234,9 @@ export default function Messages({ onUnreadChange }) {
     setPickerFor(null)
     const mine = m.reactions?.[emoji]?.mine
     if (mine) {
-      await supabase.from('dm_message_reactions')
-        .delete().match({ message_id: m.id, user_id: me, emoji })
+      await supabase.from('dm_message_reactions').delete().match({ message_id: m.id, user_id: me, emoji })
     } else {
-      await supabase.from('dm_message_reactions')
-        .insert({ message_id: m.id, user_id: me, emoji })
+      await supabase.from('dm_message_reactions').insert({ message_id: m.id, user_id: me, emoji })
     }
     loadMessages(activeConv)
   }
@@ -283,27 +247,24 @@ export default function Messages({ onUnreadChange }) {
     const body = editText.trim()
     if (!body) return
     setEditingId(null)
-    await supabase.from('dm_messages')
-      .update({ body, edited_at: new Date().toISOString() }).eq('id', m.id)
+    await supabase.from('dm_messages').update({ body, edited_at: new Date().toISOString() }).eq('id', m.id)
     loadMessages(activeConv)
   }
 
   async function softDelete(m) {
     if (!window.confirm('Delete this message?')) return
-    await supabase.from('dm_messages')
-      .update({ deleted_at: new Date().toISOString(), deleted_by: me }).eq('id', m.id)
+    await supabase.from('dm_messages').update({ deleted_at: new Date().toISOString(), deleted_by: me }).eq('id', m.id)
     loadMessages(activeConv)
   }
 
   async function deleteChat() {
     if (!activeConv) return
-    if (!window.confirm('Delete this chat? It will be removed for you only. It comes back if they message you again.')) return
+    if (!window.confirm('Delete this chat? It is removed for you only, and the old messages will not come back. It reappears empty if they message you again.')) return
     await supabase.from('dm_cleared').upsert(
       { conversation_id: activeConv.id, user_id: me, cleared_at: new Date().toISOString() },
       { onConflict: 'conversation_id,user_id' }
     )
-    setActiveConv(null)
-    setMessages([])
+    setActiveConv(null); setMessages([])
     loadConversations()
   }
 
@@ -319,9 +280,18 @@ export default function Messages({ onUnreadChange }) {
   const filteredPeople = people.filter(p =>
     `${p.first_name || ''} ${p.last_name || ''}`.toLowerCase().includes(search.toLowerCase()))
 
-  // ---- Render helpers ------------------------------------------------------
+  function renderAttachment(a, i, mine) {
+    if (a.type === 'video') return <video key={i} src={a.url} controls style={styles.media} />
+    if (a.type === 'file') return (
+      <a key={i} href={a.url} target="_blank" rel="noreferrer" style={{ ...styles.fileChip, color: mine ? '#0A0A0A' : '#e8e8e8' }}>
+        <i className="ti ti-paperclip" aria-hidden="true" /> {a.name || 'File'}
+      </a>
+    )
+    return <img key={i} src={a.url} alt={a.name || 'attachment'} style={styles.media} />
+  }
 
-  function MessageRow({ m, isReply }) {
+  // render function (not a nested component) so videos aren't remounted on reload
+  function renderMessage(m, isReply) {
     const mine = m.user_id === me
     const rx = Object.entries(m.reactions || {})
     const editing = editingId === m.id
@@ -330,6 +300,7 @@ export default function Messages({ onUnreadChange }) {
 
     return (
       <div
+        key={m.id}
         style={{ ...styles.row, alignItems: mine ? 'flex-end' : 'flex-start' }}
         onMouseEnter={() => setHoveredId(m.id)}
         onMouseLeave={() => { setHoveredId(null); setPickerFor(null) }}
@@ -338,13 +309,9 @@ export default function Messages({ onUnreadChange }) {
           {editing ? (
             <div style={styles.editWrap}>
               <input
-                style={styles.editInput}
-                value={editText}
+                style={styles.editInput} value={editText}
                 onChange={e => setEditText(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(m) }
-                  if (e.key === 'Escape') cancelEdit()
-                }}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(m) } if (e.key === 'Escape') cancelEdit() }}
                 autoFocus
               />
               <div style={styles.editBtns}>
@@ -361,18 +328,13 @@ export default function Messages({ onUnreadChange }) {
               borderRadius: mine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
               border: m.deleted_at ? '0.5px dashed #444' : 'none',
               fontStyle: m.deleted_at ? 'italic' : 'normal',
-              lineHeight: 1.4,
-              wordBreak: 'break-word',
+              lineHeight: 1.4, wordBreak: 'break-word',
+              display: 'flex', flexDirection: 'column', gap: atts.length && m.body ? '6px' : 0,
             }}>
               {m.deleted_at ? 'Message deleted' : (
                 <>
-                  {atts.map((a, i) => a.type === 'video' ? (
-                    <video key={i} src={a.url} controls style={styles.media} />
-                  ) : (
-                    <img key={i} src={a.url} alt={a.name || 'attachment'} style={styles.media} />
-                  ))}
-                  {m.body && <span>{m.body}</span>}
-                  {m.edited_at && <span style={{ ...styles.editedTag, color: mine ? 'rgba(10,10,10,0.55)' : '#888' }}>edited</span>}
+                  {atts.map((a, i) => renderAttachment(a, i, mine))}
+                  {m.body && <span>{m.body}{m.edited_at && <span style={{ ...styles.editedTag, color: mine ? 'rgba(10,10,10,0.55)' : '#888' }}>edited</span>}</span>}
                 </>
               )}
             </div>
@@ -381,27 +343,13 @@ export default function Messages({ onUnreadChange }) {
           {!m.deleted_at && !editing && hoveredId === m.id && (
             <div style={styles.actions}>
               {pickerFor === m.id ? (
-                EMOJIS.map(e => (
-                  <button key={e} onClick={() => toggleReaction(m, e)} style={styles.actEmoji}>{e}</button>
-                ))
+                EMOJIS.map(e => (<button key={e} onClick={() => toggleReaction(m, e)} style={styles.actEmoji}>{e}</button>))
               ) : (
                 <>
-                  <button style={styles.actBtn} onClick={() => setPickerFor(m.id)} aria-label="React">
-                    <i className="ti ti-mood-smile" aria-hidden="true" />
-                  </button>
-                  <button style={styles.actBtn} onClick={() => { setReplyTo(m); setPickerFor(null) }} aria-label="Reply">
-                    <i className="ti ti-corner-up-left" aria-hidden="true" />
-                  </button>
-                  {canEdit && (
-                    <button style={styles.actBtn} onClick={() => startEdit(m)} aria-label="Edit">
-                      <i className="ti ti-pencil" aria-hidden="true" />
-                    </button>
-                  )}
-                  {mine && (
-                    <button style={styles.actBtn} onClick={() => softDelete(m)} aria-label="Delete">
-                      <i className="ti ti-trash" aria-hidden="true" />
-                    </button>
-                  )}
+                  <button style={styles.actBtn} onClick={() => setPickerFor(m.id)} aria-label="React"><i className="ti ti-mood-smile" aria-hidden="true" /></button>
+                  <button style={styles.actBtn} onClick={() => { setReplyTo(m); setPickerFor(null) }} aria-label="Reply"><i className="ti ti-corner-up-left" aria-hidden="true" /></button>
+                  {canEdit && <button style={styles.actBtn} onClick={() => startEdit(m)} aria-label="Edit"><i className="ti ti-pencil" aria-hidden="true" /></button>}
+                  {mine && <button style={styles.actBtn} onClick={() => softDelete(m)} aria-label="Delete"><i className="ti ti-trash" aria-hidden="true" /></button>}
                 </>
               )}
             </div>
@@ -411,11 +359,7 @@ export default function Messages({ onUnreadChange }) {
         {rx.length > 0 && (
           <div style={{ ...styles.reactions, justifyContent: mine ? 'flex-end' : 'flex-start' }}>
             {rx.map(([emoji, info]) => (
-              <button
-                key={emoji}
-                onClick={() => toggleReaction(m, emoji)}
-                style={{ ...styles.rx, ...(info.mine ? styles.rxMine : {}) }}
-              >
+              <button key={emoji} onClick={() => toggleReaction(m, emoji)} style={{ ...styles.rx, ...(info.mine ? styles.rxMine : {}) }}>
                 <span style={styles.rxEmoji}>{emoji}</span> {info.count}
               </button>
             ))}
@@ -429,7 +373,6 @@ export default function Messages({ onUnreadChange }) {
 
   return (
     <div style={styles.wrap}>
-      {/* Conversation list */}
       <div style={styles.listCol}>
         <div style={styles.listHeader}>
           <span style={styles.listTitle}>Messages</span>
@@ -442,8 +385,7 @@ export default function Messages({ onUnreadChange }) {
           <div style={styles.picker}>
             <div style={styles.searchBox}>
               <i className="ti ti-search" style={{ fontSize: '14px', color: '#555' }} aria-hidden="true" />
-              <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Search people" style={styles.searchInput} />
+              <input autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder="Search people" style={styles.searchInput} />
               <button onClick={() => setShowPicker(false)} aria-label="Close" style={styles.iconBtn}>
                 <i className="ti ti-x" style={{ fontSize: '15px', color: '#777' }} aria-hidden="true" />
               </button>
@@ -464,8 +406,7 @@ export default function Messages({ onUnreadChange }) {
           {conversations.map(c => {
             const active = activeConv?.id === c.id
             return (
-              <button key={c.id} onClick={() => openConversation(c)}
-                style={{ ...styles.convRow, ...(active ? styles.convRowActive : {}) }}>
+              <button key={c.id} onClick={() => openConversation(c)} style={{ ...styles.convRow, ...(active ? styles.convRowActive : {}) }}>
                 <div style={styles.avatarMd}>{initials(c.other.first_name, c.other.last_name)}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={styles.convTop}>
@@ -484,7 +425,6 @@ export default function Messages({ onUnreadChange }) {
         </div>
       </div>
 
-      {/* Thread pane */}
       <div style={styles.threadCol}>
         {!activeConv ? (
           <div style={styles.placeholder}>
@@ -507,10 +447,10 @@ export default function Messages({ onUnreadChange }) {
                 const replies = repliesByParent[m.id] || []
                 return (
                   <div key={m.id}>
-                    <MessageRow m={m} isReply={false} />
+                    {renderMessage(m, false)}
                     {replies.length > 0 && (
                       <div style={styles.thread}>
-                        {replies.map(r => <MessageRow key={r.id} m={r} isReply={true} />)}
+                        {replies.map(r => renderMessage(r, true))}
                         <div style={styles.threadFoot}>
                           <i className="ti ti-corner-up-left" aria-hidden="true" style={{ fontSize: 12 }} />
                           {' '}{replies.length} {replies.length === 1 ? 'reply' : 'replies'}
@@ -535,8 +475,23 @@ export default function Messages({ onUnreadChange }) {
               </div>
             )}
 
+            {pending.length > 0 && (
+              <div style={styles.pendingRow}>
+                {pending.map((a, i) => (
+                  <div key={i} style={styles.pendingItem}>
+                    {(a.type === 'image' || a.type === 'gif')
+                      ? <img src={a.url} alt="" style={styles.pendingThumb} />
+                      : <div style={styles.pendingFile}><i className={`ti ${a.type === 'video' ? 'ti-video' : 'ti-paperclip'}`} aria-hidden="true" /> {a.name || a.type}</div>}
+                    <button onClick={() => removePending(i)} style={styles.pendingX} aria-label="Remove">
+                      <i className="ti ti-x" aria-hidden="true" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div style={styles.composer}>
-              <MediaPicker pathPrefix={`dm/${activeConv.id}`} onAttach={sendAttachment} />
+              <MediaPicker pathPrefix={`dm/${activeConv.id}`} onAttach={addPending} />
               <input
                 value={draft}
                 onChange={e => setDraft(e.target.value)}
@@ -581,6 +536,7 @@ const styles = {
   messageScroll: { flex: 1, overflowY: 'auto', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '12px', minHeight: 0 },
   row: { display: 'flex', flexDirection: 'column', gap: '4px' },
   media: { maxWidth: '220px', borderRadius: '10px', display: 'block' },
+  fileChip: { display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', textDecoration: 'underline', wordBreak: 'break-all' },
   editedTag: { fontSize: '10px', marginLeft: '6px' },
   actions: { display: 'flex', gap: '2px', background: '#161616', border: '0.5px solid #333', borderRadius: '8px', padding: '2px' },
   actBtn: { width: '26px', height: '26px', borderRadius: '6px', background: 'transparent', color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', border: 'none', cursor: 'pointer' },
@@ -597,7 +553,12 @@ const styles = {
   editSave: { background: GOLD, color: '#0A0A0A', border: 'none', borderRadius: '7px', padding: '6px 14px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif' },
   editCancel: { background: 'transparent', color: '#888', border: '0.5px solid #333', borderRadius: '7px', padding: '6px 14px', fontSize: '12px', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif' },
   replyBanner: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 20px', borderTop: '0.5px solid #2a2a2a', background: '#0f0f0f' },
-  composer: { padding: '14px 20px', borderTop: '0.5px solid #2a2a2a', display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 },
+  pendingRow: { display: 'flex', gap: '8px', flexWrap: 'wrap', padding: '10px 20px', borderTop: '0.5px solid #2a2a2a', background: '#0f0f0f' },
+  pendingItem: { position: 'relative' },
+  pendingThumb: { width: '54px', height: '54px', objectFit: 'cover', borderRadius: '8px', display: 'block' },
+  pendingFile: { display: 'flex', alignItems: 'center', gap: '6px', maxWidth: '160px', height: '54px', padding: '0 10px', background: '#1E1E1E', border: '0.5px solid #333', borderRadius: '8px', fontSize: '11px', color: '#ccc', overflow: 'hidden' },
+  pendingX: { position: 'absolute', top: '-6px', right: '-6px', width: '18px', height: '18px', borderRadius: '50%', background: '#0A0A0A', border: '0.5px solid #444', color: '#ccc', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', padding: 0 },
+  composer: { padding: '14px 20px', borderTop: '0.5px solid #2a2a2a', display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 },
   composerInput: { flex: 1, background: '#0A0A0A', border: '0.5px solid #333', borderRadius: '20px', padding: '10px 15px', fontSize: '13px', color: '#fff', fontFamily: 'Montserrat, sans-serif', outline: 'none' },
   sendBtn: { width: '34px', height: '34px', borderRadius: '50%', background: GOLD, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   iconBtn: { background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2px' },

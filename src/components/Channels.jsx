@@ -9,6 +9,7 @@ export default function Channels() {
   const [currentUser, setCurrentUser] = useState(null)
   const [messages, setMessages] = useState([])
   const [text, setText] = useState('')
+  const [pending, setPending] = useState([])
   const [replyingTo, setReplyingTo] = useState(null)
   const [hoveredId, setHoveredId] = useState(null)
   const [pickerFor, setPickerFor] = useState(null)
@@ -17,19 +18,14 @@ export default function Channels() {
   const [editingId, setEditingId] = useState(null)
   const [editText, setEditText] = useState('')
   const endRef = useRef(null)
+  const lastLenRef = useRef(0)
 
-  // Read the logged-in user straight from Supabase, independent of AuthContext.
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setCurrentUser(data?.session?.user ?? null)
-    })
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setCurrentUser(session?.user ?? null)
-    })
+    supabase.auth.getSession().then(({ data }) => setCurrentUser(data?.session?.user ?? null))
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => setCurrentUser(session?.user ?? null))
     return () => { sub?.subscription?.unsubscribe() }
   }, [])
 
-  // My permission level, to decide who can delete messages.
   useEffect(() => {
     if (!currentUser) { setMyAccountType(null); return }
     supabase.from('profiles').select('account_type').eq('id', currentUser.id).single()
@@ -43,9 +39,7 @@ export default function Channels() {
       .eq('channel', CHANNEL)
       .order('created_at', { ascending: true })
 
-    const { data: rxns } = await supabase
-      .from('message_reactions')
-      .select('message_id, emoji, user_id')
+    const { data: rxns } = await supabase.from('message_reactions').select('message_id, emoji, user_id')
 
     const byMsg = {}
     ;(rxns || []).forEach(r => {
@@ -71,29 +65,24 @@ export default function Channels() {
     return () => { supabase.removeChannel(ch) }
   }, [load])
 
+  // Only auto-scroll when a new message arrives, so playing videos aren't yanked.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (messages.length > lastLenRef.current) endRef.current?.scrollIntoView({ behavior: 'smooth' })
+    lastLenRef.current = messages.length
   }, [messages])
+
+  function addPending(att) { setPending(p => [...p, att]) }
+  function removePending(i) { setPending(p => p.filter((_, j) => j !== i)) }
 
   async function send() {
     const body = text.trim()
-    if (!body || !currentUser) return
-    setText('')
+    if ((!body && pending.length === 0) || !currentUser) return
     const payload = { channel: CHANNEL, user_id: currentUser.id, body }
+    if (pending.length) payload.attachments = pending
     if (replyingTo) payload.parent_id = replyingTo.id
-    setReplyingTo(null)
+    setText(''); setPending([]); setReplyingTo(null)
     const { error } = await supabase.from('messages').insert(payload)
     if (error) { console.error('Send failed:', error); setText(body) }
-    load()
-  }
-
-  async function sendAttachment(att) {
-    if (!currentUser) return
-    const payload = { channel: CHANNEL, user_id: currentUser.id, body: '', attachments: [att] }
-    if (replyingTo) payload.parent_id = replyingTo.id
-    setReplyingTo(null)
-    const { error } = await supabase.from('messages').insert(payload)
-    if (error) console.error('Attachment failed:', error)
     load()
   }
 
@@ -106,19 +95,15 @@ export default function Channels() {
     setPickerFor(null)
     const mine = message.reactions?.[emoji]?.mine
     if (mine) {
-      await supabase.from('message_reactions')
-        .delete().match({ message_id: message.id, user_id: currentUser.id, emoji })
+      await supabase.from('message_reactions').delete().match({ message_id: message.id, user_id: currentUser.id, emoji })
     } else {
-      await supabase.from('message_reactions')
-        .insert({ message_id: message.id, user_id: currentUser.id, emoji })
+      await supabase.from('message_reactions').insert({ message_id: message.id, user_id: currentUser.id, emoji })
     }
     load()
   }
 
   const isStaff = myAccountType === 'admin' || myAccountType === 'leader'
-  function canDelete(m) {
-    return isStaff || (currentUser && m.user_id === currentUser.id)
-  }
+  function canDelete(m) { return isStaff || (currentUser && m.user_id === currentUser.id) }
   async function deleteMessage(m) {
     if (!window.confirm('Delete this message? This cannot be undone.')) return
     await supabase.from('messages').delete().eq('id', m.id)
@@ -135,13 +120,9 @@ export default function Channels() {
     load()
   }
 
-  const initials = (m) =>
-    `${(m.author_first?.[0] || '').toUpperCase()}${(m.author_last?.[0] || '').toUpperCase()}` || '?'
-  const name = (m) =>
-    `${m.author_first || 'Member'}${m.author_last ? ' ' + m.author_last : ''}`
-  const roleTag = (role) => (role === 'leader' ? 'Leader' : role === 'admin' ? 'Admin' : null)
-  const time = (iso) =>
-    new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  const initials = (m) => `${(m.author_first?.[0] || '').toUpperCase()}${(m.author_last?.[0] || '').toUpperCase()}` || '?'
+  const name = (m) => `${m.author_first || 'Member'}${m.author_last ? ' ' + m.author_last : ''}`
+  const time = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
   const dayLabel = (iso) => {
     const d = new Date(iso)
     const today = new Date()
@@ -154,49 +135,45 @@ export default function Channels() {
   const top = messages.filter(m => !m.parent_id)
   const repliesFor = (id) => messages.filter(m => m.parent_id === id)
 
+  function renderAttachment(a, i) {
+    if (a.type === 'video') return <video key={i} src={a.url} controls style={styles.mediaItem} />
+    if (a.type === 'file') return (
+      <a key={i} href={a.url} target="_blank" rel="noreferrer" style={styles.fileChip}>
+        <i className="ti ti-paperclip" aria-hidden="true" /> {a.name || 'File'}
+      </a>
+    )
+    return <img key={i} src={a.url} alt={a.name || 'attachment'} style={styles.mediaItem} />
+  }
+
   function renderMessage(m, reply) {
     const isSelf = currentUser && m.user_id === currentUser.id
     const tag = isSelf ? 'you' : null
     const rx = Object.entries(m.reactions || {})
     const atts = m.attachments || []
     return (
-      <div
-        style={{ ...styles.msg, ...(reply ? styles.msgReply : {}) }}
+      <div style={{ ...styles.msg, ...(reply ? styles.msgReply : {}) }}
         onMouseEnter={() => setHoveredId(m.id)}
-        onMouseLeave={() => { setHoveredId(null); setPickerFor(null) }}
-      >
+        onMouseLeave={() => { setHoveredId(null); setPickerFor(null) }}>
         {hoveredId === m.id && (
           <div style={styles.actions}>
             {pickerFor === m.id ? (
-              EMOJIS.map(e => (
-                <button key={e} onClick={() => toggleReaction(m, e)} style={styles.actEmoji}>{e}</button>
-              ))
+              EMOJIS.map(e => (<button key={e} onClick={() => toggleReaction(m, e)} style={styles.actEmoji}>{e}</button>))
             ) : (
               <>
-                <button style={styles.actBtn} onClick={() => setPickerFor(m.id)} aria-label="React">
-                  <i className="ti ti-heart" aria-hidden="true" />
-                </button>
-                <button style={styles.actBtn} onClick={() => { setReplyingTo(m); setPickerFor(null) }} aria-label="Reply">
-                  <i className="ti ti-corner-up-left" aria-hidden="true" />
-                </button>
+                <button style={styles.actBtn} onClick={() => setPickerFor(m.id)} aria-label="React"><i className="ti ti-mood-smile" aria-hidden="true" /></button>
+                <button style={styles.actBtn} onClick={() => { setReplyingTo(m); setPickerFor(null) }} aria-label="Reply"><i className="ti ti-corner-up-left" aria-hidden="true" /></button>
                 {currentUser && m.user_id === currentUser.id && m.body && (
-                  <button style={styles.actBtn} onClick={() => startEdit(m)} aria-label="Edit">
-                    <i className="ti ti-pencil" aria-hidden="true" />
-                  </button>
+                  <button style={styles.actBtn} onClick={() => startEdit(m)} aria-label="Edit"><i className="ti ti-pencil" aria-hidden="true" /></button>
                 )}
                 {canDelete(m) && (
-                  <button style={styles.actBtn} onClick={() => deleteMessage(m)} aria-label="Delete">
-                    <i className="ti ti-trash" aria-hidden="true" />
-                  </button>
+                  <button style={styles.actBtn} onClick={() => deleteMessage(m)} aria-label="Delete"><i className="ti ti-trash" aria-hidden="true" /></button>
                 )}
               </>
             )}
           </div>
         )}
 
-        <div style={{ ...styles.avatar, ...(reply ? styles.avatarSm : {}), ...(isSelf ? styles.avatarSelf : {}) }}>
-          {initials(m)}
-        </div>
+        <div style={{ ...styles.avatar, ...(reply ? styles.avatarSm : {}), ...(isSelf ? styles.avatarSelf : {}) }}>{initials(m)}</div>
 
         <div style={styles.msgContent}>
           <div style={styles.meta}>
@@ -206,16 +183,10 @@ export default function Channels() {
           </div>
           {editingId === m.id ? (
             <div style={styles.editWrap}>
-              <input
-                style={styles.editInput}
-                value={editText}
+              <input style={styles.editInput} value={editText}
                 onChange={e => setEditText(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(m) }
-                  if (e.key === 'Escape') { cancelEdit() }
-                }}
-                autoFocus
-              />
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(m) } if (e.key === 'Escape') cancelEdit() }}
+                autoFocus />
               <div style={styles.editBtns}>
                 <button style={styles.editSave} onClick={() => saveEdit(m)}>Save</button>
                 <button style={styles.editCancel} onClick={cancelEdit}>Cancel</button>
@@ -224,25 +195,13 @@ export default function Channels() {
           ) : (
             <>
               {m.body && <div style={{ ...styles.text, ...(reply ? styles.textSm : {}) }}>{m.body}</div>}
-              {atts.length > 0 && (
-                <div style={styles.media}>
-                  {atts.map((a, i) => a.type === 'video' ? (
-                    <video key={i} src={a.url} controls style={styles.mediaItem} />
-                  ) : (
-                    <img key={i} src={a.url} alt={a.name || 'attachment'} style={styles.mediaItem} />
-                  ))}
-                </div>
-              )}
+              {atts.length > 0 && <div style={styles.media}>{atts.map((a, i) => renderAttachment(a, i))}</div>}
             </>
           )}
           {rx.length > 0 && (
             <div style={styles.reactions}>
               {rx.map(([emoji, info]) => (
-                <button
-                  key={emoji}
-                  onClick={() => toggleReaction(m, emoji)}
-                  style={{ ...styles.rx, ...(info.mine ? styles.rxMine : {}) }}
-                >
+                <button key={emoji} onClick={() => toggleReaction(m, emoji)} style={{ ...styles.rx, ...(info.mine ? styles.rxMine : {}) }}>
                   <span style={styles.rxEmoji}>{emoji}</span> {info.count}
                 </button>
               ))}
@@ -303,26 +262,26 @@ export default function Channels() {
       <div style={styles.composer}>
         {replyingTo && (
           <div style={styles.replyBar}>
-            <span style={styles.replyText}>
-              Replying to <strong style={{ color: '#C9A84C' }}>{name(replyingTo)}</strong>
-            </span>
-            <button onClick={() => setReplyingTo(null)} style={styles.replyClose} aria-label="Cancel reply">
-              <i className="ti ti-x" aria-hidden="true" />
-            </button>
+            <span style={styles.replyText}>Replying to <strong style={{ color: '#C9A84C' }}>{name(replyingTo)}</strong></span>
+            <button onClick={() => setReplyingTo(null)} style={styles.replyClose} aria-label="Cancel reply"><i className="ti ti-x" aria-hidden="true" /></button>
+          </div>
+        )}
+        {pending.length > 0 && (
+          <div style={styles.pendingRow}>
+            {pending.map((a, i) => (
+              <div key={i} style={styles.pendingItem}>
+                {(a.type === 'image' || a.type === 'gif')
+                  ? <img src={a.url} alt="" style={styles.pendingThumb} />
+                  : <div style={styles.pendingFile}><i className={`ti ${a.type === 'video' ? 'ti-video' : 'ti-paperclip'}`} aria-hidden="true" /> {a.name || a.type}</div>}
+                <button onClick={() => removePending(i)} style={styles.pendingX} aria-label="Remove"><i className="ti ti-x" aria-hidden="true" /></button>
+              </div>
+            ))}
           </div>
         )}
         <div style={styles.composerInner}>
-          <MediaPicker pathPrefix={`channel/${CHANNEL}`} onAttach={sendAttachment} />
-          <input
-            value={text}
-            onChange={e => setText(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder="Message # Agentship"
-            style={styles.input}
-          />
-          <button onClick={send} style={styles.send} aria-label="Send">
-            <i className="ti ti-send" aria-hidden="true" />
-          </button>
+          <MediaPicker pathPrefix={`channel/${CHANNEL}`} onAttach={addPending} />
+          <input value={text} onChange={e => setText(e.target.value)} onKeyDown={onKeyDown} placeholder="Message # Agentship" style={styles.input} />
+          <button onClick={send} style={styles.send} aria-label="Send"><i className="ti ti-send" aria-hidden="true" /></button>
         </div>
         <div style={styles.note}>Everyone on the platform can read and post here</div>
       </div>
@@ -356,6 +315,7 @@ const styles = {
   textSm: { fontSize: '13px' },
   media: { marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '6px' },
   mediaItem: { maxWidth: '260px', maxHeight: '260px', borderRadius: '10px', display: 'block' },
+  fileChip: { display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#C9A84C', textDecoration: 'underline', marginTop: '6px', wordBreak: 'break-all' },
   editWrap: { marginTop: '2px' },
   editInput: { width: '100%', background: '#1E1E1E', border: '0.5px solid #333', borderRadius: '8px', color: '#fff', fontSize: '14px', fontFamily: 'Montserrat, sans-serif', padding: '9px 12px', outline: 'none' },
   editBtns: { display: 'flex', gap: '8px', marginTop: '6px' },
@@ -374,6 +334,11 @@ const styles = {
   replyBar: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#161616', border: '0.5px solid #333', borderRadius: '8px', padding: '8px 8px 8px 14px', marginBottom: '8px' },
   replyText: { fontSize: '12px', color: '#aaa' },
   replyClose: { width: '26px', height: '26px', borderRadius: '6px', background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: '15px' },
+  pendingRow: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' },
+  pendingItem: { position: 'relative' },
+  pendingThumb: { width: '54px', height: '54px', objectFit: 'cover', borderRadius: '8px', display: 'block' },
+  pendingFile: { display: 'flex', alignItems: 'center', gap: '6px', maxWidth: '160px', height: '54px', padding: '0 10px', background: '#161616', border: '0.5px solid #333', borderRadius: '8px', fontSize: '11px', color: '#ccc', overflow: 'hidden' },
+  pendingX: { position: 'absolute', top: '-6px', right: '-6px', width: '18px', height: '18px', borderRadius: '50%', background: '#0A0A0A', border: '0.5px solid #444', color: '#ccc', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', padding: 0 },
   composerInner: { display: 'flex', alignItems: 'center', gap: '10px', background: '#1E1E1E', border: '0.5px solid #333', borderRadius: '12px', padding: '6px 6px 6px 12px' },
   input: { flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: '14px', fontFamily: 'Montserrat, sans-serif', padding: '10px 0' },
   send: { width: '38px', height: '38px', borderRadius: '9px', background: '#C9A84C', color: '#0A0A0A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', border: 'none', cursor: 'pointer', flexShrink: 0 },
