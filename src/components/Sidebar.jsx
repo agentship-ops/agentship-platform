@@ -124,7 +124,7 @@ export default function Sidebar({ open, activeView, setActiveView }) {
     ? `${profile.first_name?.[0] ?? ''}${profile.last_name?.[0] ?? ''}`
     : '?'
 
-  // `role` is the job title shown under the name (Director of Operations, CEO, Agent).
+  // `title` is the job title shown under the name (Director of Operations, CEO, Agent).
   // `account_type` is the permission level (admin, leader, agent) and is never displayed.
   const ACCOUNT_TYPE_FALLBACK = {
     admin: 'Admin',
@@ -133,7 +133,7 @@ export default function Sidebar({ open, activeView, setActiveView }) {
   }
 
   const displayTitle =
-    profile?.role?.trim()
+    profile?.title?.trim()
     || ACCOUNT_TYPE_FALLBACK[profile?.account_type]
     || 'Agent'
 
