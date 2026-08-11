@@ -107,10 +107,12 @@ export default function Sidebar({ open, activeView, setActiveView }) {
     return () => { alive = false; supabase.removeChannel(ch) }
   }, [])
 
-  // Zero it out the moment you open the channel; recompute shortly after you leave.
+  // Opening the channel marks it read here, so the read reliably persists
+  // regardless of the channel view's own timing. Recompute shortly after leaving.
   useEffect(() => {
     if (activeView === 'ch-agentship') {
       setAgentshipUnread(0)
+      supabase.rpc('mark_channel_read', { p_channel: 'agentship' })
       return
     }
     const t = setTimeout(async () => {
