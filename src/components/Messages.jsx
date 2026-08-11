@@ -1,16 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { useAuth } from '../lib/AuthContext'
+import MediaPicker from './MediaPicker'
 
 // Full-page Direct Messages.
-// Private 1:1 conversations with channel-parity features:
-// real-time text, heart reactions, threaded replies, photo/video/GIF upload,
-// and soft delete of your own messages. Privacy is enforced in the database
-// (participant-only RLS), so this component only ever sees the caller's own
-// conversations.
+// Private 1:1 conversations that mirror the channel feature set:
+// full emoji reactions, threaded replies, edit-after-send, photo/video upload,
+// reaction + message notifications. Each person can also delete a whole chat
+// just for themselves. Privacy is enforced in the database (participant-only).
 
 const GOLD = '#C9A84C'
 const BUCKET = 'channel-media'
+const EMOJIS = ['❤️', '👍', '😂', '🎉', '👏']
 
 function initials(f, l) {
   return `${(f?.[0] ?? '').toUpperCase()}${(l?.[0] ?? '').toUpperCase()}` || '?'
@@ -20,8 +20,7 @@ function shortTime(iso) {
   if (!iso) return ''
   const d = new Date(iso)
   const now = new Date()
-  const sameDay = d.toDateString() === now.toDateString()
-  if (sameDay) {
+  if (d.toDateString() === now.toDateString()) {
     return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(' ', '').toLowerCase()
   }
   const diffDays = Math.floor((now - d) / 86400000)
@@ -31,26 +30,34 @@ function shortTime(iso) {
 }
 
 export default function Messages({ onUnreadChange }) {
-  const { user, profile } = useAuth()
-  const me = user?.id
+  const [currentUser, setCurrentUser] = useState(null)
+  const me = currentUser?.id
 
   const [conversations, setConversations] = useState([])
-  const [activeConv, setActiveConv] = useState(null) // { id, other: {id, first_name, last_name} }
+  const [activeConv, setActiveConv] = useState(null) // { id, other, clearedAt }
   const [messages, setMessages] = useState([])
-  const [reactions, setReactions] = useState({}) // messageId -> [{user_id}]
-  const [reads, setReads] = useState({}) // conversationId -> last_read_at
   const [draft, setDraft] = useState('')
   const [replyTo, setReplyTo] = useState(null)
-  const [openThreads, setOpenThreads] = useState({}) // parentId -> bool
+  const [hoveredId, setHoveredId] = useState(null)
+  const [pickerFor, setPickerFor] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [editText, setEditText] = useState('')
   const [showPicker, setShowPicker] = useState(false)
   const [people, setPeople] = useState([])
   const [search, setSearch] = useState('')
-  const [uploading, setUploading] = useState(false)
 
-  const scrollRef = useRef(null)
-  const fileRef = useRef(null)
+  const endRef = useRef(null)
 
-  // ---- Loaders -------------------------------------------------------------
+  // Read the logged-in user straight from Supabase (matches Channels).
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setCurrentUser(data?.session?.user ?? null))
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      setCurrentUser(session?.user ?? null)
+    })
+    return () => { sub?.subscription?.unsubscribe() }
+  }, [])
+
+  // ---- Conversation list ---------------------------------------------------
 
   const loadConversations = useCallback(async () => {
     if (!me) return
@@ -61,26 +68,25 @@ export default function Messages({ onUnreadChange }) {
     if (!convs) return
 
     const otherIds = convs.map(c => (c.user_low === me ? c.user_high : c.user_low))
-    let profilesById = {}
+    const profilesById = {}
     if (otherIds.length) {
       const { data: profs } = await supabase
-        .from('profiles')
-        .select('id, first_name, last_name')
-        .in('id', otherIds)
+        .from('profiles').select('id, first_name, last_name').in('id', otherIds)
       ;(profs || []).forEach(p => { profilesById[p.id] = p })
     }
 
     const { data: readRows } = await supabase
-      .from('dm_reads')
-      .select('conversation_id, last_read_at')
-      .eq('user_id', me)
+      .from('dm_reads').select('conversation_id, last_read_at').eq('user_id', me)
     const readMap = {}
     ;(readRows || []).forEach(r => { readMap[r.conversation_id] = r.last_read_at })
-    setReads(readMap)
 
-    // last message per conversation for preview + unread comparison
+    const { data: clearedRows } = await supabase
+      .from('dm_cleared').select('conversation_id, cleared_at').eq('user_id', me)
+    const clearedMap = {}
+    ;(clearedRows || []).forEach(r => { clearedMap[r.conversation_id] = r.cleared_at })
+
     const convIds = convs.map(c => c.id)
-    let previews = {}
+    const previews = {}
     if (convIds.length) {
       const { data: recent } = await supabase
         .from('dm_messages')
@@ -97,20 +103,23 @@ export default function Messages({ onUnreadChange }) {
       const otherId = c.user_low === me ? c.user_high : c.user_low
       const last = previews[c.id]
       const lastRead = readMap[c.id]
+      const clearedAt = clearedMap[c.id]
       const unread = last && last.user_id !== me &&
         (!lastRead || new Date(last.created_at) > new Date(lastRead))
       return {
         id: c.id,
         last_message_at: c.last_message_at,
+        clearedAt,
         other: profilesById[otherId] || { id: otherId, first_name: '', last_name: '' },
         preview: last ? previewText(last) : '',
         unread: !!unread,
       }
     })
-    setConversations(shaped)
+    // Hide chats the user cleared, until a newer message arrives.
+    .filter(c => !c.clearedAt || new Date(c.last_message_at) > new Date(c.clearedAt))
 
-    const totalUnread = shaped.filter(c => c.unread).length
-    if (onUnreadChange) onUnreadChange(totalUnread)
+    setConversations(shaped)
+    if (onUnreadChange) onUnreadChange(shaped.filter(c => c.unread).length)
   }, [me, onUnreadChange])
 
   function previewText(m) {
@@ -121,30 +130,36 @@ export default function Messages({ onUnreadChange }) {
     return ''
   }
 
-  const loadMessages = useCallback(async (convId) => {
-    const { data } = await supabase
+  // ---- Messages in the open conversation -----------------------------------
+
+  const loadMessages = useCallback(async (conv) => {
+    if (!conv) return
+    let q = supabase
       .from('dm_messages')
       .select('*')
-      .eq('conversation_id', convId)
+      .eq('conversation_id', conv.id)
       .order('created_at', { ascending: true })
-    setMessages(data || [])
+    if (conv.clearedAt) q = q.gt('created_at', conv.clearedAt)
+    const { data } = await q
 
-    const ids = (data || []).map(m => m.id)
+    const msgs = data || []
+    const ids = msgs.map(m => m.id)
+    let byMsg = {}
     if (ids.length) {
       const { data: rx } = await supabase
         .from('dm_message_reactions')
-        .select('message_id, user_id, emoji')
+        .select('message_id, emoji, user_id')
         .in('message_id', ids)
-      const map = {}
       ;(rx || []).forEach(r => {
-        map[r.message_id] = map[r.message_id] || []
-        map[r.message_id].push(r)
+        byMsg[r.message_id] = byMsg[r.message_id] || {}
+        const cell = byMsg[r.message_id][r.emoji] || { count: 0, mine: false }
+        cell.count += 1
+        if (r.user_id === me) cell.mine = true
+        byMsg[r.message_id][r.emoji] = cell
       })
-      setReactions(map)
-    } else {
-      setReactions({})
     }
-  }, [])
+    setMessages(msgs.map(m => ({ ...m, reactions: byMsg[m.id] || {} })))
+  }, [me])
 
   const markRead = useCallback(async (convId) => {
     if (!me) return
@@ -159,57 +174,61 @@ export default function Messages({ onUnreadChange }) {
     })
   }, [me, onUnreadChange])
 
+  async function openConversation(entry) {
+    // entry: { id, other, clearedAt }
+    let clearedAt = entry.clearedAt
+    if (clearedAt === undefined) {
+      const { data } = await supabase
+        .from('dm_cleared').select('cleared_at')
+        .eq('conversation_id', entry.id).eq('user_id', me).maybeSingle()
+      clearedAt = data?.cleared_at || null
+    }
+    const conv = { id: entry.id, other: entry.other, clearedAt }
+    setActiveConv(conv)
+    setEditingId(null)
+    setReplyTo(null)
+    loadMessages(conv)
+    markRead(conv.id)
+  }
+
   // ---- Effects -------------------------------------------------------------
 
   useEffect(() => { loadConversations() }, [loadConversations])
 
   useEffect(() => {
     if (!activeConv) return
-    loadMessages(activeConv.id)
-    markRead(activeConv.id)
-  }, [activeConv, loadMessages, markRead])
-
-  // realtime: open conversation messages + reactions
-  useEffect(() => {
-    if (!activeConv) return
     const ch = supabase
       .channel(`dm-${activeConv.id}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'dm_messages', filter: `conversation_id=eq.${activeConv.id}` },
-        () => { loadMessages(activeConv.id); markRead(activeConv.id) })
+        () => { loadMessages(activeConv); markRead(activeConv.id) })
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'dm_message_reactions' },
-        () => loadMessages(activeConv.id))
+        () => loadMessages(activeConv))
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [activeConv, loadMessages, markRead])
 
-  // realtime: conversation list (last_message_at bumps, new conversations)
   useEffect(() => {
     if (!me) return
     const ch = supabase
       .channel('dm-conv-list')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_conversations' },
-        () => loadConversations())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_conversations' }, () => loadConversations())
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [me, loadConversations])
 
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-  }, [messages])
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
   // ---- Actions -------------------------------------------------------------
 
-  async function openPicker() {
+  async function openPeople() {
     setShowPicker(true)
     setSearch('')
     if (!people.length) {
       const { data } = await supabase
-        .from('profiles')
-        .select('id, first_name, last_name')
-        .neq('id', me)
-        .order('first_name', { ascending: true })
+        .from('profiles').select('id, first_name, last_name')
+        .neq('id', me).order('first_name', { ascending: true })
       setPeople(data || [])
     }
   }
@@ -218,63 +237,74 @@ export default function Messages({ onUnreadChange }) {
     const { data, error } = await supabase.rpc('get_or_create_dm', { other_user: person.id })
     if (error) { console.error(error); return }
     setShowPicker(false)
-    setActiveConv({ id: data, other: person })
+    openConversation({ id: data, other: person, clearedAt: null })
     loadConversations()
   }
 
   async function send() {
-    const text = draft.trim()
-    if (!text || !activeConv || !me) return
-    const payload = {
-      conversation_id: activeConv.id,
-      user_id: me,
-      body: text,
-      parent_id: replyTo ? replyTo.id : null,
-    }
+    const body = draft.trim()
+    if (!body || !activeConv || !me) return
     setDraft('')
+    const payload = { conversation_id: activeConv.id, user_id: me, body }
+    if (replyTo) payload.parent_id = replyTo.id
     setReplyTo(null)
     const { error } = await supabase.from('dm_messages').insert(payload)
-    if (error) console.error(error)
+    if (error) { console.error('Send failed:', error); setDraft(body) }
+    loadMessages(activeConv)
   }
 
-  async function handleFile(e) {
-    const file = e.target.files?.[0]
-    if (!file || !activeConv || !me) return
-    setUploading(true)
-    const path = `dm/${activeConv.id}/${Date.now()}-${file.name.replace(/[^\w.-]/g, '_')}`
-    const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file)
-    if (upErr) { console.error(upErr); setUploading(false); return }
-    const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path)
-    const type = file.type.startsWith('video') ? 'video' : 'image'
-    await supabase.from('dm_messages').insert({
-      conversation_id: activeConv.id,
-      user_id: me,
-      body: '',
-      attachments: [{ url: pub.publicUrl, type, name: file.name }],
-      parent_id: replyTo ? replyTo.id : null,
-    })
+  async function sendAttachment(att) {
+    if (!activeConv || !me) return
+    const payload = { conversation_id: activeConv.id, user_id: me, body: '', attachments: [att] }
+    if (replyTo) payload.parent_id = replyTo.id
     setReplyTo(null)
-    setUploading(false)
-    if (fileRef.current) fileRef.current.value = ''
+    const { error } = await supabase.from('dm_messages').insert(payload)
+    if (error) console.error('Attachment message failed:', error)
+    loadMessages(activeConv)
   }
 
-  async function toggleHeart(msg) {
-    const mine = (reactions[msg.id] || []).find(r => r.user_id === me && r.emoji === 'heart')
+  async function toggleReaction(m, emoji) {
+    if (!me) return
+    setPickerFor(null)
+    const mine = m.reactions?.[emoji]?.mine
     if (mine) {
       await supabase.from('dm_message_reactions')
-        .delete().eq('message_id', msg.id).eq('user_id', me).eq('emoji', 'heart')
+        .delete().match({ message_id: m.id, user_id: me, emoji })
     } else {
       await supabase.from('dm_message_reactions')
-        .insert({ message_id: msg.id, user_id: me, emoji: 'heart' })
+        .insert({ message_id: m.id, user_id: me, emoji })
     }
-    loadMessages(activeConv.id)
+    loadMessages(activeConv)
   }
 
-  async function softDelete(msg) {
+  function startEdit(m) { setEditingId(m.id); setEditText(m.body); setPickerFor(null) }
+  function cancelEdit() { setEditingId(null); setEditText('') }
+  async function saveEdit(m) {
+    const body = editText.trim()
+    if (!body) return
+    setEditingId(null)
     await supabase.from('dm_messages')
-      .update({ deleted_at: new Date().toISOString(), deleted_by: me })
-      .eq('id', msg.id)
-    loadMessages(activeConv.id)
+      .update({ body, edited_at: new Date().toISOString() }).eq('id', m.id)
+    loadMessages(activeConv)
+  }
+
+  async function softDelete(m) {
+    if (!window.confirm('Delete this message?')) return
+    await supabase.from('dm_messages')
+      .update({ deleted_at: new Date().toISOString(), deleted_by: me }).eq('id', m.id)
+    loadMessages(activeConv)
+  }
+
+  async function deleteChat() {
+    if (!activeConv) return
+    if (!window.confirm('Delete this chat? It will be removed for you only. It comes back if they message you again.')) return
+    await supabase.from('dm_cleared').upsert(
+      { conversation_id: activeConv.id, user_id: me, cleared_at: new Date().toISOString() },
+      { onConflict: 'conversation_id,user_id' }
+    )
+    setActiveConv(null)
+    setMessages([])
+    loadConversations()
   }
 
   // ---- Derived -------------------------------------------------------------
@@ -286,10 +316,114 @@ export default function Messages({ onUnreadChange }) {
     repliesByParent[m.parent_id].push(m)
   })
 
-  const filteredPeople = people.filter(p => {
-    const name = `${p.first_name || ''} ${p.last_name || ''}`.toLowerCase()
-    return name.includes(search.toLowerCase())
-  })
+  const filteredPeople = people.filter(p =>
+    `${p.first_name || ''} ${p.last_name || ''}`.toLowerCase().includes(search.toLowerCase()))
+
+  // ---- Render helpers ------------------------------------------------------
+
+  function MessageRow({ m, isReply }) {
+    const mine = m.user_id === me
+    const rx = Object.entries(m.reactions || {})
+    const editing = editingId === m.id
+    const atts = m.attachments || []
+    const canEdit = mine && m.body && !m.deleted_at
+
+    return (
+      <div
+        style={{ ...styles.row, alignItems: mine ? 'flex-end' : 'flex-start' }}
+        onMouseEnter={() => setHoveredId(m.id)}
+        onMouseLeave={() => { setHoveredId(null); setPickerFor(null) }}
+      >
+        <div style={{ display: 'flex', flexDirection: mine ? 'row-reverse' : 'row', alignItems: 'center', gap: '6px', maxWidth: '72%' }}>
+          {editing ? (
+            <div style={styles.editWrap}>
+              <input
+                style={styles.editInput}
+                value={editText}
+                onChange={e => setEditText(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(m) }
+                  if (e.key === 'Escape') cancelEdit()
+                }}
+                autoFocus
+              />
+              <div style={styles.editBtns}>
+                <button style={styles.editSave} onClick={() => saveEdit(m)}>Save</button>
+                <button style={styles.editCancel} onClick={cancelEdit}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              background: m.deleted_at ? 'transparent' : (mine ? GOLD : '#2a2a2a'),
+              color: m.deleted_at ? '#666' : (mine ? '#0A0A0A' : '#f0f0f0'),
+              fontSize: isReply ? '12px' : '13px',
+              padding: atts.length && !m.body ? '4px' : '9px 13px',
+              borderRadius: mine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+              border: m.deleted_at ? '0.5px dashed #444' : 'none',
+              fontStyle: m.deleted_at ? 'italic' : 'normal',
+              lineHeight: 1.4,
+              wordBreak: 'break-word',
+            }}>
+              {m.deleted_at ? 'Message deleted' : (
+                <>
+                  {atts.map((a, i) => a.type === 'video' ? (
+                    <video key={i} src={a.url} controls style={styles.media} />
+                  ) : (
+                    <img key={i} src={a.url} alt={a.name || 'attachment'} style={styles.media} />
+                  ))}
+                  {m.body && <span>{m.body}</span>}
+                  {m.edited_at && <span style={{ ...styles.editedTag, color: mine ? 'rgba(10,10,10,0.55)' : '#888' }}>edited</span>}
+                </>
+              )}
+            </div>
+          )}
+
+          {!m.deleted_at && !editing && hoveredId === m.id && (
+            <div style={styles.actions}>
+              {pickerFor === m.id ? (
+                EMOJIS.map(e => (
+                  <button key={e} onClick={() => toggleReaction(m, e)} style={styles.actEmoji}>{e}</button>
+                ))
+              ) : (
+                <>
+                  <button style={styles.actBtn} onClick={() => setPickerFor(m.id)} aria-label="React">
+                    <i className="ti ti-mood-smile" aria-hidden="true" />
+                  </button>
+                  <button style={styles.actBtn} onClick={() => { setReplyTo(m); setPickerFor(null) }} aria-label="Reply">
+                    <i className="ti ti-corner-up-left" aria-hidden="true" />
+                  </button>
+                  {canEdit && (
+                    <button style={styles.actBtn} onClick={() => startEdit(m)} aria-label="Edit">
+                      <i className="ti ti-pencil" aria-hidden="true" />
+                    </button>
+                  )}
+                  {mine && (
+                    <button style={styles.actBtn} onClick={() => softDelete(m)} aria-label="Delete">
+                      <i className="ti ti-trash" aria-hidden="true" />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {rx.length > 0 && (
+          <div style={{ ...styles.reactions, justifyContent: mine ? 'flex-end' : 'flex-start' }}>
+            {rx.map(([emoji, info]) => (
+              <button
+                key={emoji}
+                onClick={() => toggleReaction(m, emoji)}
+                style={{ ...styles.rx, ...(info.mine ? styles.rxMine : {}) }}
+              >
+                <span style={styles.rxEmoji}>{emoji}</span> {info.count}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   // ---- Render --------------------------------------------------------------
 
@@ -299,7 +433,7 @@ export default function Messages({ onUnreadChange }) {
       <div style={styles.listCol}>
         <div style={styles.listHeader}>
           <span style={styles.listTitle}>Messages</span>
-          <button onClick={openPicker} aria-label="New message" style={styles.iconBtn}>
+          <button onClick={openPeople} aria-label="New message" style={styles.iconBtn}>
             <i className="ti ti-edit" style={{ fontSize: '18px', color: GOLD }} aria-hidden="true" />
           </button>
         </div>
@@ -308,13 +442,8 @@ export default function Messages({ onUnreadChange }) {
           <div style={styles.picker}>
             <div style={styles.searchBox}>
               <i className="ti ti-search" style={{ fontSize: '14px', color: '#555' }} aria-hidden="true" />
-              <input
-                autoFocus
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search people"
-                style={styles.searchInput}
-              />
+              <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search people" style={styles.searchInput} />
               <button onClick={() => setShowPicker(false)} aria-label="Close" style={styles.iconBtn}>
                 <i className="ti ti-x" style={{ fontSize: '15px', color: '#777' }} aria-hidden="true" />
               </button>
@@ -335,15 +464,12 @@ export default function Messages({ onUnreadChange }) {
           {conversations.map(c => {
             const active = activeConv?.id === c.id
             return (
-              <button
-                key={c.id}
-                onClick={() => setActiveConv({ id: c.id, other: c.other })}
-                style={{ ...styles.convRow, ...(active ? styles.convRowActive : {}) }}
-              >
+              <button key={c.id} onClick={() => openConversation(c)}
+                style={{ ...styles.convRow, ...(active ? styles.convRowActive : {}) }}>
                 <div style={styles.avatarMd}>{initials(c.other.first_name, c.other.last_name)}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={styles.convTop}>
-                    <span style={styles.convName}>{c.other.first_name} {c.other.last_name?.[0] ? c.other.last_name[0] + '.' : ''}</span>
+                    <span style={styles.convName}>{c.other.first_name} {c.other.last_name}</span>
                     <span style={styles.convTime}>{shortTime(c.last_message_at)}</span>
                   </div>
                   <div style={{ ...styles.convPreview, color: c.unread ? GOLD : '#999' }}>{c.preview}</div>
@@ -370,60 +496,38 @@ export default function Messages({ onUnreadChange }) {
             <div style={styles.threadHeader}>
               <div style={styles.avatarSm}>{initials(activeConv.other.first_name, activeConv.other.last_name)}</div>
               <span style={styles.threadName}>{activeConv.other.first_name} {activeConv.other.last_name}</span>
+              <div style={{ flex: 1 }} />
+              <button onClick={deleteChat} aria-label="Delete chat" style={styles.iconBtn}>
+                <i className="ti ti-trash" style={{ fontSize: '17px', color: '#777' }} aria-hidden="true" />
+              </button>
             </div>
 
-            <div ref={scrollRef} style={styles.messageScroll}>
+            <div style={styles.messageScroll}>
               {topLevel.map(m => {
-                const mine = m.user_id === me
-                const hearts = (reactions[m.id] || []).filter(r => r.emoji === 'heart')
-                const iHearted = hearts.some(r => r.user_id === me)
                 const replies = repliesByParent[m.id] || []
-                const threadOpen = openThreads[m.id]
                 return (
-                  <div key={m.id} style={{ ...styles.msgRow, alignItems: mine ? 'flex-end' : 'flex-start' }}>
-                    <Bubble
-                      m={m} mine={mine}
-                      onHeart={() => toggleHeart(m)}
-                      onReply={() => setReplyTo(m)}
-                      onDelete={() => softDelete(m)}
-                    />
-                    {hearts.length > 0 && (
-                      <div style={{ ...styles.reactionPill, borderColor: iHearted ? GOLD : '#333', color: iHearted ? GOLD : '#999' }}>
-                        <i className="ti ti-heart" style={{ fontSize: '11px' }} aria-hidden="true" /> {hearts.length}
+                  <div key={m.id}>
+                    <MessageRow m={m} isReply={false} />
+                    {replies.length > 0 && (
+                      <div style={styles.thread}>
+                        {replies.map(r => <MessageRow key={r.id} m={r} isReply={true} />)}
+                        <div style={styles.threadFoot}>
+                          <i className="ti ti-corner-up-left" aria-hidden="true" style={{ fontSize: 12 }} />
+                          {' '}{replies.length} {replies.length === 1 ? 'reply' : 'replies'}
+                        </div>
                       </div>
                     )}
-                    {replies.length > 0 && (
-                      <button
-                        onClick={() => setOpenThreads(p => ({ ...p, [m.id]: !p[m.id] }))}
-                        style={styles.threadToggle}
-                      >
-                        <i className="ti ti-arrow-back-up" style={{ fontSize: '13px' }} aria-hidden="true" />
-                        {' '}{replies.length} {replies.length === 1 ? 'reply' : 'replies'}
-                      </button>
-                    )}
-                    {threadOpen && replies.map(r => {
-                      const rMine = r.user_id === me
-                      return (
-                        <div key={r.id} style={{ ...styles.replyRow, alignItems: rMine ? 'flex-end' : 'flex-start' }}>
-                          <Bubble
-                            m={r} mine={rMine} small
-                            onHeart={() => toggleHeart(r)}
-                            onReply={() => setReplyTo(m)}
-                            onDelete={() => softDelete(r)}
-                          />
-                        </div>
-                      )
-                    })}
                   </div>
                 )
               })}
               {!topLevel.length && <div style={styles.empty}>Say hello.</div>}
+              <div ref={endRef} />
             </div>
 
             {replyTo && (
               <div style={styles.replyBanner}>
-                <span style={{ color: '#999', fontSize: '11px' }}>
-                  Replying to {replyTo.deleted_at ? 'a message' : (replyTo.body || 'an attachment').slice(0, 40)}
+                <span style={{ color: '#aaa', fontSize: '12px' }}>
+                  Replying to <strong style={{ color: GOLD }}>{replyTo.deleted_at ? 'a message' : (replyTo.body || 'an attachment').slice(0, 40)}</strong>
                 </span>
                 <button onClick={() => setReplyTo(null)} aria-label="Cancel reply" style={styles.iconBtn}>
                   <i className="ti ti-x" style={{ fontSize: '14px', color: '#777' }} aria-hidden="true" />
@@ -432,10 +536,7 @@ export default function Messages({ onUnreadChange }) {
             )}
 
             <div style={styles.composer}>
-              <button onClick={() => fileRef.current?.click()} aria-label="Attach photo" style={styles.iconBtn}>
-                <i className="ti ti-photo" style={{ fontSize: '20px', color: uploading ? GOLD : '#777' }} aria-hidden="true" />
-              </button>
-              <input ref={fileRef} type="file" accept="image/*,video/*,image/gif" onChange={handleFile} style={{ display: 'none' }} />
+              <MediaPicker pathPrefix={`dm/${activeConv.id}`} onAttach={sendAttachment} />
               <input
                 value={draft}
                 onChange={e => setDraft(e.target.value)}
@@ -444,7 +545,7 @@ export default function Messages({ onUnreadChange }) {
                 style={styles.composerInput}
               />
               <button onClick={send} aria-label="Send" style={styles.sendBtn}>
-                <i className="ti ti-arrow-up" style={{ fontSize: '18px', color: '#0A0A0A' }} aria-hidden="true" />
+                <i className="ti ti-send" style={{ fontSize: '18px', color: '#0A0A0A' }} aria-hidden="true" />
               </button>
             </div>
           </>
@@ -454,247 +555,53 @@ export default function Messages({ onUnreadChange }) {
   )
 }
 
-function Bubble({ m, mine, small, onHeart, onReply, onDelete }) {
-  const [hover, setHover] = useState(false)
-  const atts = m.attachments || []
-  return (
-    <div
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{ display: 'flex', flexDirection: mine ? 'row-reverse' : 'row', alignItems: 'center', gap: '6px', maxWidth: '68%' }}
-    >
-      <div style={{
-        background: m.deleted_at ? 'transparent' : (mine ? GOLD : '#2a2a2a'),
-        color: m.deleted_at ? '#666' : (mine ? '#0A0A0A' : '#f0f0f0'),
-        fontSize: small ? '12px' : '13px',
-        padding: atts.length && !m.body ? '4px' : '9px 13px',
-        borderRadius: mine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-        border: m.deleted_at ? '0.5px dashed #444' : 'none',
-        fontStyle: m.deleted_at ? 'italic' : 'normal',
-        lineHeight: 1.4,
-        wordBreak: 'break-word',
-      }}>
-        {m.deleted_at ? 'Message deleted' : (
-          <>
-            {atts.map((a, i) => a.type === 'video' ? (
-              <video key={i} src={a.url} controls style={{ maxWidth: '220px', borderRadius: '10px', display: 'block' }} />
-            ) : (
-              <img key={i} src={a.url} alt={a.name || 'attachment'} style={{ maxWidth: '220px', borderRadius: '10px', display: 'block' }} />
-            ))}
-            {m.body && <span>{m.body}</span>}
-          </>
-        )}
-      </div>
-      {!m.deleted_at && hover && (
-        <div style={{ display: 'flex', gap: '2px' }}>
-          <button onClick={onHeart} aria-label="Heart" style={miniBtn}>
-            <i className="ti ti-heart" style={{ fontSize: '14px', color: '#888' }} aria-hidden="true" />
-          </button>
-          <button onClick={onReply} aria-label="Reply" style={miniBtn}>
-            <i className="ti ti-arrow-back-up" style={{ fontSize: '14px', color: '#888' }} aria-hidden="true" />
-          </button>
-          {mine && (
-            <button onClick={onDelete} aria-label="Delete" style={miniBtn}>
-              <i className="ti ti-trash" style={{ fontSize: '14px', color: '#888' }} aria-hidden="true" />
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-const miniBtn = {
-  width: '24px', height: '24px', borderRadius: '6px', background: 'transparent',
-  border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-}
-
 const styles = {
-  wrap: {
-    display: 'grid',
-    gridTemplateColumns: '240px 1fr',
-    height: '100%',
-    minHeight: 0,
-  },
-  listCol: {
-    borderRight: '0.5px solid #2a2a2a',
-    background: '#0f0f0f',
-    display: 'flex',
-    flexDirection: 'column',
-    minHeight: 0,
-  },
-  listHeader: {
-    padding: '18px 16px 12px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
+  wrap: { display: 'grid', gridTemplateColumns: '240px 1fr', height: '100%', minHeight: 0 },
+  listCol: { borderRight: '0.5px solid #2a2a2a', background: '#0f0f0f', display: 'flex', flexDirection: 'column', minHeight: 0 },
+  listHeader: { padding: '18px 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
   listTitle: { fontSize: '17px', fontWeight: '600', color: '#fff' },
-  picker: {
-    borderBottom: '0.5px solid #2a2a2a',
-    background: '#0A0A0A',
-  },
-  searchBox: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '7px',
-    padding: '10px 12px',
-  },
-  searchInput: {
-    flex: 1,
-    background: 'transparent',
-    border: 'none',
-    color: '#fff',
-    fontSize: '13px',
-    fontFamily: 'Montserrat, sans-serif',
-  },
-  pickerList: { maxHeight: '220px', overflowY: 'auto', paddingBottom: '6px' },
-  pickerRow: {
-    width: '100%',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    padding: '9px 14px',
-    background: 'transparent',
-    border: 'none',
-    cursor: 'pointer',
-    textAlign: 'left',
-    fontFamily: 'Montserrat, sans-serif',
-  },
+  picker: { borderBottom: '0.5px solid #2a2a2a', background: '#0A0A0A' },
+  searchBox: { display: 'flex', alignItems: 'center', gap: '7px', padding: '10px 12px' },
+  searchInput: { flex: 1, background: 'transparent', border: 'none', color: '#fff', fontSize: '13px', fontFamily: 'Montserrat, sans-serif', outline: 'none' },
+  pickerList: { maxHeight: '240px', overflowY: 'auto', paddingBottom: '6px' },
+  pickerRow: { width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 14px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'Montserrat, sans-serif' },
   pickerName: { fontSize: '13px', color: '#fff', fontWeight: '500' },
   convScroll: { flex: 1, overflowY: 'auto', minHeight: 0 },
-  convRow: {
-    width: '100%',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    padding: '12px 14px',
-    background: 'transparent',
-    border: 'none',
-    borderLeft: '2px solid transparent',
-    cursor: 'pointer',
-    textAlign: 'left',
-    fontFamily: 'Montserrat, sans-serif',
-  },
-  convRowActive: {
-    background: 'rgba(201,168,76,0.06)',
-    borderLeft: `2px solid ${GOLD}`,
-  },
-  convTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' },
-  convName: { fontSize: '13px', fontWeight: '500', color: '#fff' },
-  convTime: { fontSize: '10px', color: '#555' },
-  convPreview: {
-    fontSize: '11px',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    marginTop: '1px',
-  },
+  convRow: { width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', background: 'transparent', border: 'none', borderLeft: '2px solid transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'Montserrat, sans-serif' },
+  convRowActive: { background: 'rgba(201,168,76,0.06)', borderLeft: `2px solid ${GOLD}` },
+  convTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px' },
+  convName: { fontSize: '13px', fontWeight: '500', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  convTime: { fontSize: '10px', color: '#555', flexShrink: 0 },
+  convPreview: { fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: '1px' },
   unreadDot: { width: '8px', height: '8px', borderRadius: '50%', background: GOLD, flexShrink: 0 },
   threadCol: { display: 'flex', flexDirection: 'column', minHeight: 0 },
-  placeholder: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '12px',
-  },
-  threadHeader: {
-    padding: '14px 20px',
-    borderBottom: '0.5px solid #2a2a2a',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '11px',
-    flexShrink: 0,
-  },
+  placeholder: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px' },
+  threadHeader: { padding: '14px 20px', borderBottom: '0.5px solid #2a2a2a', display: 'flex', alignItems: 'center', gap: '11px', flexShrink: 0 },
   threadName: { fontSize: '14px', fontWeight: '600', color: '#fff' },
-  messageScroll: {
-    flex: 1,
-    overflowY: 'auto',
-    padding: '18px 20px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '12px',
-    minHeight: 0,
-  },
-  msgRow: { display: 'flex', flexDirection: 'column', gap: '4px' },
-  replyRow: { display: 'flex', flexDirection: 'column', marginTop: '4px', paddingLeft: '18px' },
-  reactionPill: {
-    background: '#1E1E1E',
-    border: '0.5px solid #333',
-    borderRadius: '12px',
-    padding: '2px 8px',
-    fontSize: '11px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '3px',
-    width: 'fit-content',
-  },
-  threadToggle: {
-    background: 'transparent',
-    border: 'none',
-    color: '#777',
-    fontSize: '11px',
-    cursor: 'pointer',
-    padding: '2px 0',
-    fontFamily: 'Montserrat, sans-serif',
-    width: 'fit-content',
-  },
-  replyBanner: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '8px 20px',
-    borderTop: '0.5px solid #2a2a2a',
-    background: '#0f0f0f',
-  },
-  composer: {
-    padding: '14px 20px',
-    borderTop: '0.5px solid #2a2a2a',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    flexShrink: 0,
-  },
-  composerInput: {
-    flex: 1,
-    background: '#0A0A0A',
-    border: '0.5px solid #333',
-    borderRadius: '20px',
-    padding: '10px 15px',
-    fontSize: '13px',
-    color: '#fff',
-    fontFamily: 'Montserrat, sans-serif',
-  },
-  sendBtn: {
-    width: '34px',
-    height: '34px',
-    borderRadius: '50%',
-    background: GOLD,
-    border: 'none',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  iconBtn: {
-    background: 'transparent',
-    border: 'none',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '2px',
-  },
-  avatarSm: {
-    width: '32px', height: '32px', borderRadius: '50%', background: GOLD, color: '#0A0A0A',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '700', flexShrink: 0,
-  },
-  avatarMd: {
-    width: '36px', height: '36px', borderRadius: '50%', background: '#2a2a2a', color: '#999',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', flexShrink: 0,
-  },
+  messageScroll: { flex: 1, overflowY: 'auto', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '12px', minHeight: 0 },
+  row: { display: 'flex', flexDirection: 'column', gap: '4px' },
+  media: { maxWidth: '220px', borderRadius: '10px', display: 'block' },
+  editedTag: { fontSize: '10px', marginLeft: '6px' },
+  actions: { display: 'flex', gap: '2px', background: '#161616', border: '0.5px solid #333', borderRadius: '8px', padding: '2px' },
+  actBtn: { width: '26px', height: '26px', borderRadius: '6px', background: 'transparent', color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', border: 'none', cursor: 'pointer' },
+  actEmoji: { width: '28px', height: '26px', borderRadius: '6px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  reactions: { display: 'flex', gap: '6px', flexWrap: 'wrap' },
+  rx: { display: 'inline-flex', alignItems: 'center', gap: '5px', background: '#1a1a1a', border: '0.5px solid #333', borderRadius: '12px', padding: '3px 9px', fontSize: '11px', color: '#ccc', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif' },
+  rxMine: { borderColor: 'rgba(201,168,76,0.55)', background: 'rgba(201,168,76,0.10)', color: '#fff' },
+  rxEmoji: { fontSize: '12px', lineHeight: 1 },
+  thread: { margin: '6px 0 4px 24px', borderLeft: '2px solid rgba(201,168,76,0.35)', paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '6px' },
+  threadFoot: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: GOLD, marginTop: '2px', opacity: 0.85 },
+  editWrap: { minWidth: '220px' },
+  editInput: { width: '100%', background: '#1E1E1E', border: '0.5px solid #333', borderRadius: '8px', color: '#fff', fontSize: '13px', fontFamily: 'Montserrat, sans-serif', padding: '9px 12px', outline: 'none' },
+  editBtns: { display: 'flex', gap: '8px', marginTop: '6px' },
+  editSave: { background: GOLD, color: '#0A0A0A', border: 'none', borderRadius: '7px', padding: '6px 14px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif' },
+  editCancel: { background: 'transparent', color: '#888', border: '0.5px solid #333', borderRadius: '7px', padding: '6px 14px', fontSize: '12px', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif' },
+  replyBanner: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 20px', borderTop: '0.5px solid #2a2a2a', background: '#0f0f0f' },
+  composer: { padding: '14px 20px', borderTop: '0.5px solid #2a2a2a', display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 },
+  composerInput: { flex: 1, background: '#0A0A0A', border: '0.5px solid #333', borderRadius: '20px', padding: '10px 15px', fontSize: '13px', color: '#fff', fontFamily: 'Montserrat, sans-serif', outline: 'none' },
+  sendBtn: { width: '34px', height: '34px', borderRadius: '50%', background: GOLD, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  iconBtn: { background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2px' },
+  avatarSm: { width: '32px', height: '32px', borderRadius: '50%', background: GOLD, color: '#0A0A0A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '700', flexShrink: 0 },
+  avatarMd: { width: '36px', height: '36px', borderRadius: '50%', background: '#2a2a2a', color: '#999', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', flexShrink: 0 },
   empty: { padding: '20px', fontSize: '12px', color: '#555', textAlign: 'center', lineHeight: 1.6 },
 }

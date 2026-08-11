@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import MediaPicker from './MediaPicker'
 
 const CHANNEL = 'agentship'
 const EMOJIS = ['\u2764\uFE0F', '\uD83D\uDC4D', '\uD83D\uDE02', '\uD83C\uDF89', '\uD83D\uDC4F']
@@ -38,7 +39,7 @@ export default function Channels() {
   const load = useCallback(async () => {
     const { data: msgs } = await supabase
       .from('messages')
-      .select('id, body, parent_id, created_at, user_id, author_first, author_last, author_role')
+      .select('id, body, parent_id, created_at, user_id, author_first, author_last, author_role, attachments')
       .eq('channel', CHANNEL)
       .order('created_at', { ascending: true })
 
@@ -83,6 +84,16 @@ export default function Channels() {
     setReplyingTo(null)
     const { error } = await supabase.from('messages').insert(payload)
     if (error) { console.error('Send failed:', error); setText(body) }
+    load()
+  }
+
+  async function sendAttachment(att) {
+    if (!currentUser) return
+    const payload = { channel: CHANNEL, user_id: currentUser.id, body: '', attachments: [att] }
+    if (replyingTo) payload.parent_id = replyingTo.id
+    setReplyingTo(null)
+    const { error } = await supabase.from('messages').insert(payload)
+    if (error) console.error('Attachment failed:', error)
     load()
   }
 
@@ -147,6 +158,7 @@ export default function Channels() {
     const isSelf = currentUser && m.user_id === currentUser.id
     const tag = isSelf ? 'you' : null
     const rx = Object.entries(m.reactions || {})
+    const atts = m.attachments || []
     return (
       <div
         style={{ ...styles.msg, ...(reply ? styles.msgReply : {}) }}
@@ -167,7 +179,7 @@ export default function Channels() {
                 <button style={styles.actBtn} onClick={() => { setReplyingTo(m); setPickerFor(null) }} aria-label="Reply">
                   <i className="ti ti-corner-up-left" aria-hidden="true" />
                 </button>
-                {currentUser && m.user_id === currentUser.id && (
+                {currentUser && m.user_id === currentUser.id && m.body && (
                   <button style={styles.actBtn} onClick={() => startEdit(m)} aria-label="Edit">
                     <i className="ti ti-pencil" aria-hidden="true" />
                   </button>
@@ -210,7 +222,18 @@ export default function Channels() {
               </div>
             </div>
           ) : (
-            <div style={{ ...styles.text, ...(reply ? styles.textSm : {}) }}>{m.body}</div>
+            <>
+              {m.body && <div style={{ ...styles.text, ...(reply ? styles.textSm : {}) }}>{m.body}</div>}
+              {atts.length > 0 && (
+                <div style={styles.media}>
+                  {atts.map((a, i) => a.type === 'video' ? (
+                    <video key={i} src={a.url} controls style={styles.mediaItem} />
+                  ) : (
+                    <img key={i} src={a.url} alt={a.name || 'attachment'} style={styles.mediaItem} />
+                  ))}
+                </div>
+              )}
+            </>
           )}
           {rx.length > 0 && (
             <div style={styles.reactions}>
@@ -289,6 +312,7 @@ export default function Channels() {
           </div>
         )}
         <div style={styles.composerInner}>
+          <MediaPicker pathPrefix={`channel/${CHANNEL}`} onAttach={sendAttachment} />
           <input
             value={text}
             onChange={e => setText(e.target.value)}
@@ -330,6 +354,8 @@ const styles = {
   time: { fontSize: '10px', color: '#555' },
   text: { fontSize: '14px', lineHeight: 1.55, color: '#e8e8e8', whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
   textSm: { fontSize: '13px' },
+  media: { marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '6px' },
+  mediaItem: { maxWidth: '260px', maxHeight: '260px', borderRadius: '10px', display: 'block' },
   editWrap: { marginTop: '2px' },
   editInput: { width: '100%', background: '#1E1E1E', border: '0.5px solid #333', borderRadius: '8px', color: '#fff', fontSize: '14px', fontFamily: 'Montserrat, sans-serif', padding: '9px 12px', outline: 'none' },
   editBtns: { display: 'flex', gap: '8px', marginTop: '6px' },
@@ -348,7 +374,7 @@ const styles = {
   replyBar: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#161616', border: '0.5px solid #333', borderRadius: '8px', padding: '8px 8px 8px 14px', marginBottom: '8px' },
   replyText: { fontSize: '12px', color: '#aaa' },
   replyClose: { width: '26px', height: '26px', borderRadius: '6px', background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: '15px' },
-  composerInner: { display: 'flex', alignItems: 'center', gap: '10px', background: '#1E1E1E', border: '0.5px solid #333', borderRadius: '12px', padding: '6px 6px 6px 16px' },
+  composerInner: { display: 'flex', alignItems: 'center', gap: '10px', background: '#1E1E1E', border: '0.5px solid #333', borderRadius: '12px', padding: '6px 6px 6px 12px' },
   input: { flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: '14px', fontFamily: 'Montserrat, sans-serif', padding: '10px 0' },
   send: { width: '38px', height: '38px', borderRadius: '9px', background: '#C9A84C', color: '#0A0A0A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', border: 'none', cursor: 'pointer', flexShrink: 0 },
   note: { fontSize: '10px', color: '#444', textAlign: 'center', marginTop: '8px' },
