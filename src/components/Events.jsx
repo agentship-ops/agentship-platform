@@ -26,7 +26,9 @@ function sameDay(a, b) {
 
 export default function Events() {
   const { profile } = useAuth()
-  const isLeader = profile?.role === 'leader'
+  // Leaders and admins can create events (mirrors the events table RLS).
+  // account_type is the permission field; title is only a display job title.
+  const isLeader = profile?.account_type === 'leader' || profile?.account_type === 'admin'
 
   const [events, setEvents] = useState([])
   const [rsvps, setRsvps] = useState([])
