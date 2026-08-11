@@ -198,6 +198,8 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0 }) {
                         <strong style={{ color: '#fff', fontWeight: 600 }}>{actorName(n)}</strong>
                         {n.type === 'reaction'
                           ? <> reacted <span>{n.preview}</span></>
+                          : n.type === 'mention'
+                          ? <> mentioned you</>
                           : n.type === 'dm'
                           ? <> messaged you</>
                           : n.type === 'dm_reaction'

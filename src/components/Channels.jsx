@@ -19,6 +19,10 @@ export default function Channels() {
   const [editText, setEditText] = useState('')
   const endRef = useRef(null)
   const lastLenRef = useRef(0)
+  const inputRef = useRef(null)
+  const [members, setMembers] = useState([])
+  const [mentionState, setMentionState] = useState(null)
+  const [mentioned, setMentioned] = useState([])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setCurrentUser(data?.session?.user ?? null))
@@ -31,6 +35,11 @@ export default function Channels() {
     supabase.from('profiles').select('account_type').eq('id', currentUser.id).single()
       .then(({ data }) => setMyAccountType(data?.account_type ?? null))
   }, [currentUser])
+
+  useEffect(() => {
+    supabase.from('profiles').select('id, first_name, last_name')
+      .then(({ data }) => setMembers(data || []))
+  }, [])
 
   const load = useCallback(async () => {
     const { data: msgs } = await supabase
@@ -80,13 +89,49 @@ export default function Channels() {
     const payload = { channel: CHANNEL, user_id: currentUser.id, body }
     if (pending.length) payload.attachments = pending
     if (replyingTo) payload.parent_id = replyingTo.id
-    setText(''); setPending([]); setReplyingTo(null)
+    const mentionIds = mentioned.filter(m => body.includes(mentionToken(m))).map(m => m.id)
+    if (mentionIds.length) payload.mentions = [...new Set(mentionIds)]
+    setText(''); setPending([]); setReplyingTo(null); setMentioned([]); setMentionState(null)
     const { error } = await supabase.from('messages').insert(payload)
     if (error) { console.error('Send failed:', error); setText(body) }
     load()
   }
 
+  // @ mention helpers
+  function mentionToken(m) {
+    return `@${m.first_name || ''}${m.last_name ? ' ' + m.last_name : ''}`
+  }
+  function detectMention(value, caret) {
+    const upto = value.slice(0, caret)
+    const at = upto.lastIndexOf('@')
+    if (at === -1) return null
+    const before = at === 0 ? ' ' : upto[at - 1]
+    if (!/\s/.test(before)) return null
+    const query = upto.slice(at + 1)
+    if (/\s/.test(query)) return null
+    return { at, query }
+  }
+  function onChangeText(e) {
+    const value = e.target.value
+    setText(value)
+    const caret = e.target.selectionStart ?? value.length
+    setMentionState(detectMention(value, caret))
+  }
+  function pickMention(m) {
+    const insert = mentionToken(m) + ' '
+    const { at, query } = mentionState
+    const caret = at + 1 + query.length
+    setText(text.slice(0, at) + insert + text.slice(caret))
+    setMentioned(prev => prev.some(x => x.id === m.id) ? prev : [...prev, m])
+    setMentionState(null)
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
   function onKeyDown(e) {
+    if (mentionState && filteredMembers.length) {
+      if (e.key === 'Enter') { e.preventDefault(); pickMention(filteredMembers[0]); return }
+      if (e.key === 'Escape') { e.preventDefault(); setMentionState(null); return }
+    }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
@@ -135,6 +180,13 @@ export default function Channels() {
   const top = messages.filter(m => !m.parent_id)
   const repliesFor = (id) => messages.filter(m => m.parent_id === id)
 
+  const filteredMembers = mentionState
+    ? members.filter(m => {
+        if (currentUser && m.id === currentUser.id) return false
+        return `${m.first_name || ''} ${m.last_name || ''}`.toLowerCase().includes(mentionState.query.toLowerCase())
+      }).slice(0, 6)
+    : []
+
   function renderAttachment(a, i) {
     if (a.type === 'video') return <video key={i} src={a.url} controls style={styles.mediaItem} />
     if (a.type === 'file') return (
@@ -143,6 +195,17 @@ export default function Channels() {
       </a>
     )
     return <img key={i} src={a.url} alt={a.name || 'attachment'} style={styles.mediaItem} />
+  }
+
+  function renderBody(body) {
+    if (!body) return null
+    const tokens = members.map(mentionToken).filter(t => t.length > 1)
+    if (!tokens.length) return body
+    const escaped = tokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).sort((a, b) => b.length - a.length)
+    const re = new RegExp(`(${escaped.join('|')})`, 'g')
+    return body.split(re).map((part, i) =>
+      tokens.includes(part) ? <span key={i} style={styles.mention}>{part}</span> : part
+    )
   }
 
   function renderMessage(m, reply) {
@@ -194,7 +257,7 @@ export default function Channels() {
             </div>
           ) : (
             <>
-              {m.body && <div style={{ ...styles.text, ...(reply ? styles.textSm : {}) }}>{m.body}</div>}
+              {m.body && <div style={{ ...styles.text, ...(reply ? styles.textSm : {}) }}>{renderBody(m.body)}</div>}
               {atts.length > 0 && <div style={styles.media}>{atts.map((a, i) => renderAttachment(a, i))}</div>}
             </>
           )}
@@ -278,9 +341,19 @@ export default function Channels() {
             ))}
           </div>
         )}
+        {mentionState && filteredMembers.length > 0 && (
+          <div style={styles.mentionBox}>
+            {filteredMembers.map(m => (
+              <button key={m.id} onClick={() => pickMention(m)} style={styles.mentionRow}>
+                <span style={styles.mentionAvatar}>{`${(m.first_name?.[0] || '').toUpperCase()}${(m.last_name?.[0] || '').toUpperCase()}`}</span>
+                <span>{m.first_name} {m.last_name}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div style={styles.composerInner}>
           <MediaPicker pathPrefix={`channel/${CHANNEL}`} onAttach={addPending} />
-          <input value={text} onChange={e => setText(e.target.value)} onKeyDown={onKeyDown} placeholder="Message # Agentship" style={styles.input} />
+          <input ref={inputRef} value={text} onChange={onChangeText} onKeyDown={onKeyDown} placeholder="Message # Agentship" style={styles.input} />
           <button onClick={send} style={styles.send} aria-label="Send"><i className="ti ti-send" aria-hidden="true" /></button>
         </div>
         <div style={styles.note}>Everyone on the platform can read and post here</div>
@@ -342,5 +415,9 @@ const styles = {
   composerInner: { display: 'flex', alignItems: 'center', gap: '10px', background: '#1E1E1E', border: '0.5px solid #333', borderRadius: '12px', padding: '6px 6px 6px 12px' },
   input: { flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: '14px', fontFamily: 'Montserrat, sans-serif', padding: '10px 0' },
   send: { width: '38px', height: '38px', borderRadius: '9px', background: '#C9A84C', color: '#0A0A0A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', border: 'none', cursor: 'pointer', flexShrink: 0 },
+  mention: { color: '#C9A84C', fontWeight: 600 },
+  mentionBox: { background: '#161616', border: '0.5px solid #333', borderRadius: '10px', padding: '4px', marginBottom: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)' },
+  mentionRow: { width: '100%', display: 'flex', alignItems: 'center', gap: '9px', padding: '8px 10px', background: 'transparent', border: 'none', borderRadius: '7px', cursor: 'pointer', textAlign: 'left', fontFamily: 'Montserrat, sans-serif', color: '#fff', fontSize: '13px' },
+  mentionAvatar: { width: '26px', height: '26px', borderRadius: '50%', background: '#2a2a2a', color: '#ccc', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: '700', flexShrink: 0 },
   note: { fontSize: '10px', color: '#444', textAlign: 'center', marginTop: '8px' },
 }
