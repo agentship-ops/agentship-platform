@@ -9,9 +9,11 @@ import ComingSoon from '../components/ComingSoon'
 import TrainingDetail from '../components/TrainingDetail'
 import Channels from '../components/Channels'
 import Messages from '../components/Messages'
+import Settings from '../components/Settings'
 
 const VIEWS = {
   leaderboard: <Leaderboard />,
+  settings: <Settings />,
   command: <ComingSoon title="Command Center" icon="ti-layout-dashboard" description="Your leads, calling queue, and pipeline. This is where you win the day." phase="Phase 2" />,
   atlas: <ComingSoon title="Atlas" icon="ti-robot" description="Your AI teammate. Update leads, log notes, and move deals forward — here or by text from the field." phase="Phase 2" />,
   goal: <ComingSoon title="Goal Tracker" icon="ti-chart-bar" description="Your goals vs actual activity. See where you're on track and where to push." phase="Phase 2" />,
@@ -19,6 +21,7 @@ const VIEWS = {
   welcome: <ComingSoon title="Welcome" icon="ti-user-plus" description="Welcome new agents and make posts for the team to see." phase="Phase 2" />,
   updates: <ComingSoon title="Updates" icon="ti-speakerphone" description="Leader announcements and team updates — post-based space." phase="Phase 2" />,
   events: <ComingSoon title="Events" icon="ti-calendar" description="Calendar view. Leaders create events, agents see and RSVP." phase="Phase 2" />,
+  bullpen: <ComingSoon title="Bullpen" icon="ti-speakerphone" description="Leader announcements and team updates — post-based space." phase="Phase 2" />,
   celebrate: <ComingSoon title="Celebrate" icon="ti-confetti" description="Post wins, milestones, and shoutouts. Anyone on the team can post." phase="Phase 2" />,
   referrals: <ComingSoon title="Referrals" icon="ti-arrows-right-left" description="Post and claim referral opportunities — post-based space." phase="Phase 2" />,
   'ch-agentship': <Channels />,
@@ -103,6 +106,7 @@ export default function Dashboard() {
           onToggleSidebar={() => setSidebarOpen(o => !o)}
           onNavigate={setActiveView}
           dmUnread={dmUnread}
+          activeView={activeView}
         />
         <div style={styles.body}>
           <Sidebar
