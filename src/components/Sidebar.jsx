@@ -84,12 +84,13 @@ const NAV = [
 ]
 
 export default function Sidebar({ open, activeView, setActiveView }) {
-  const { profile, signOut } = useAuth()
+  const { profile } = useAuth()
   const [openSections, setOpenSections] = useState(() => {
     const defaults = {}
     NAV.forEach(n => { if (n.type === 'section') defaults[n.id] = n.defaultOpen })
     return defaults
   })
+
   const [agentshipUnread, setAgentshipUnread] = useState(0)
 
   // Live unread count for # Agentship (everyone's messages but yours, since you last opened it).
@@ -133,7 +134,6 @@ export default function Sidebar({ open, activeView, setActiveView }) {
     leader: 'Leader',
     agent: 'Agent',
   }
-
   const displayTitle =
     profile?.title?.trim()
     || ACCOUNT_TYPE_FALLBACK[profile?.account_type]
@@ -227,9 +227,19 @@ export default function Sidebar({ open, activeView, setActiveView }) {
         })}
       </nav>
 
+      {/* Footer is identity only — who is signed in. Settings and sign out live
+          behind the gear icon in the top bar. */}
       <div style={styles.footer}>
-        <div style={styles.avatar}>{initials}</div>
-        <div style={{ flex: 1 }}>
+        {profile?.avatar_url ? (
+          <img
+            src={profile.avatar_url}
+            alt={`${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || 'Your headshot'}
+            style={styles.avatarImg}
+          />
+        ) : (
+          <div style={styles.avatar}>{initials}</div>
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>
             {profile ? `${profile.first_name} ${profile.last_name}` : 'Agent'}
           </div>
@@ -237,9 +247,6 @@ export default function Sidebar({ open, activeView, setActiveView }) {
             {displayTitle}
           </div>
         </div>
-        <button onClick={signOut} aria-label="Sign out" style={styles.signOutBtn}>
-          <i className="ti ti-logout" aria-hidden="true" />
-        </button>
       </div>
     </aside>
   )
@@ -360,18 +367,13 @@ const styles = {
     fontWeight: '700',
     flexShrink: 0,
   },
-  signOutBtn: {
+  avatarImg: {
     width: '32px',
     height: '32px',
-    borderRadius: '8px',
-    background: 'transparent',
-    border: 'none',
-    color: '#777777',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '17px',
-    fontFamily: 'Montserrat, sans-serif',
+    borderRadius: '50%',
+    objectFit: 'cover',
+    flexShrink: 0,
+    border: '1px solid #2a2a2a',
+    display: 'block',
   },
 }

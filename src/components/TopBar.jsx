@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { enablePush, currentPermission } from '../lib/push'
 
 function IconMenu() {
   return (
@@ -11,7 +10,6 @@ function IconMenu() {
     </svg>
   )
 }
-
 function IconMessage() {
   return (
     <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -19,7 +17,6 @@ function IconMessage() {
     </svg>
   )
 }
-
 function IconBell() {
   return (
     <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -28,7 +25,6 @@ function IconBell() {
     </svg>
   )
 }
-
 function IconGear() {
   return (
     <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -44,11 +40,9 @@ const CHANNEL_LABEL = { agentship: '# Agentship' }
 function actorName(n) {
   return `${n.actor_first || 'Someone'}${n.actor_last ? ' ' + n.actor_last : ''}`
 }
-
 function isDmNotif(n) {
   return n.type === 'dm' || n.type === 'dm_reaction' || (n.channel && n.channel.startsWith('dm:'))
 }
-
 function timeAgo(iso) {
   const secs = Math.max(1, Math.floor((Date.now() - new Date(iso).getTime()) / 1000))
   if (secs < 60) return 'just now'
@@ -60,15 +54,11 @@ function timeAgo(iso) {
   return `${days}d ago`
 }
 
-export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0 }) {
+export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0, activeView }) {
   const [notifOpen, setNotifOpen] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
   const [notifications, setNotifications] = useState([])
-  const [pushMsg, setPushMsg] = useState('')
-  const [pushBusy, setPushBusy] = useState(false)
   const notifRef = useRef(null)
-  const settingsRef = useRef(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setCurrentUser(data?.session?.user ?? null))
@@ -104,7 +94,6 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0 }) {
   useEffect(() => {
     function handleClick(e) {
       if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false)
-      if (settingsRef.current && !settingsRef.current.contains(e.target)) setSettingsOpen(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
@@ -122,7 +111,6 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0 }) {
   function toggleBell() {
     const willOpen = !notifOpen
     setNotifOpen(willOpen)
-    setSettingsOpen(false)
     if (willOpen) markAllRead()
   }
 
@@ -136,38 +124,22 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0 }) {
     if (onNavigate) onNavigate(view)
   }
 
-  async function handleEnablePush() {
-    setPushBusy(true)
-    setPushMsg('Setting up...')
-    const res = await enablePush()
-    setPushMsg(res.message)
-    setPushBusy(false)
-  }
-
-  const perm = currentPermission()
-  const pushButtonLabel =
-    perm === 'granted' ? 'Notifications are on'
-    : perm === 'denied' ? 'Blocked — enable in device settings'
-    : 'Turn on notifications'
+  const settingsActive = activeView === 'settings'
 
   return (
     <div style={styles.topbar}>
-
       <button onClick={onToggleSidebar} aria-label="Toggle sidebar" style={styles.hbtn}>
         <IconMenu />
       </button>
-
       <span style={styles.agentship}>AGENTSHIP</span>
-
       <div style={{ flex: 1 }} />
-
       <div style={styles.right}>
 
         <div style={{ position: 'relative' }}>
           <button
             aria-label="Messages"
             style={styles.iconBtn}
-            onClick={() => { if (onNavigate) onNavigate('messages'); setNotifOpen(false); setSettingsOpen(false) }}
+            onClick={() => { if (onNavigate) onNavigate('messages'); setNotifOpen(false) }}
           >
             <IconMessage />
           </button>
@@ -217,32 +189,20 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0 }) {
           )}
         </div>
 
-        <div style={{ position: 'relative' }} ref={settingsRef}>
-          <button
-            aria-label="Settings"
-            style={styles.iconBtn}
-            onClick={() => { setSettingsOpen(o => !o); setNotifOpen(false) }}
-          >
-            <IconGear />
-          </button>
-          {settingsOpen && (
-            <div style={{ ...styles.dropdown, right: 0, width: '250px' }}>
-              <p style={styles.dropdownTitle}>Settings</p>
-              <p style={styles.settingsLabel}>Push notifications</p>
-              <p style={styles.settingsHint}>
-                Get an alert on this device when there's a new message, even when the platform is closed.
-              </p>
-              <button
-                style={{ ...styles.enableBtn, opacity: pushBusy || perm === 'granted' ? 0.6 : 1 }}
-                onClick={handleEnablePush}
-                disabled={pushBusy || perm === 'granted'}
-              >
-                {pushButtonLabel}
-              </button>
-              {pushMsg && <p style={styles.pushMsg}>{pushMsg}</p>}
-            </div>
-          )}
-        </div>
+        {/* Settings — opens the full Settings page instead of a popover.
+            Profile photo, password, notification preferences, and sign out
+            all live there now. */}
+        <button
+          aria-label="Settings"
+          style={{
+            ...styles.iconBtn,
+            color: settingsActive ? '#C9A84C' : '#ffffff',
+            background: settingsActive ? 'rgba(201,168,76,0.12)' : 'transparent',
+          }}
+          onClick={() => { if (onNavigate) onNavigate('settings'); setNotifOpen(false) }}
+        >
+          <IconGear />
+        </button>
 
       </div>
     </div>
@@ -386,39 +346,5 @@ const styles = {
   notifSub: {
     fontSize: '11px',
     color: '#777',
-  },
-  settingsLabel: {
-    fontSize: '13px',
-    fontWeight: '600',
-    color: '#fff',
-    fontFamily: 'Montserrat, sans-serif',
-    marginBottom: '4px',
-  },
-  settingsHint: {
-    fontSize: '11px',
-    color: '#888',
-    lineHeight: 1.5,
-    marginBottom: '12px',
-    fontFamily: 'Montserrat, sans-serif',
-  },
-  enableBtn: {
-    width: '100%',
-    padding: '10px',
-    background: '#C9A84C',
-    color: '#0A0A0A',
-    borderRadius: '8px',
-    fontSize: '12px',
-    fontWeight: '700',
-    letterSpacing: '0.5px',
-    border: 'none',
-    cursor: 'pointer',
-    fontFamily: 'Montserrat, sans-serif',
-  },
-  pushMsg: {
-    fontSize: '11px',
-    color: '#aaa',
-    lineHeight: 1.5,
-    marginTop: '10px',
-    fontFamily: 'Montserrat, sans-serif',
   },
 }
