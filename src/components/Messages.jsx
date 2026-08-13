@@ -13,6 +13,22 @@ function initials(f, l) {
   return `${(f?.[0] ?? '').toUpperCase()}${(l?.[0] ?? '').toUpperCase()}` || '?'
 }
 
+// Round avatar that shows the person's headshot when they have one and falls
+// back to their initials when they don't. `style` is styles.avatarSm or
+// styles.avatarMd so sizing stays defined in one place.
+function Avatar({ person, style }) {
+  if (person?.avatar_url) {
+    return (
+      <img
+        src={person.avatar_url}
+        alt={`${person.first_name || ''} ${person.last_name || ''}`.trim() || 'Headshot'}
+        style={{ ...style, objectFit: 'cover', background: 'transparent', display: 'block' }}
+      />
+    )
+  }
+  return <div style={style}>{initials(person?.first_name, person?.last_name)}</div>
+}
+
 function shortTime(iso) {
   if (!iso) return ''
   const d = new Date(iso)
@@ -29,7 +45,6 @@ function shortTime(iso) {
 export default function Messages({ onUnreadChange }) {
   const [currentUser, setCurrentUser] = useState(null)
   const me = currentUser?.id
-
   const [conversations, setConversations] = useState([])
   const [activeConv, setActiveConv] = useState(null) // { id, other, clearedAt }
   const [messages, setMessages] = useState([])
@@ -43,7 +58,6 @@ export default function Messages({ onUnreadChange }) {
   const [showPicker, setShowPicker] = useState(false)
   const [people, setPeople] = useState([])
   const [search, setSearch] = useState('')
-
   const endRef = useRef(null)
   const lastLenRef = useRef(0)
 
@@ -54,7 +68,6 @@ export default function Messages({ onUnreadChange }) {
   }, [])
 
   // ---- Conversation list ---------------------------------------------------
-
   const loadConversations = useCallback(async () => {
     if (!me) return
     const { data: convs } = await supabase
@@ -64,7 +77,8 @@ export default function Messages({ onUnreadChange }) {
     const otherIds = convs.map(c => (c.user_low === me ? c.user_high : c.user_low))
     const profilesById = {}
     if (otherIds.length) {
-      const { data: profs } = await supabase.from('profiles').select('id, first_name, last_name').in('id', otherIds)
+      const { data: profs } = await supabase
+        .from('profiles').select('id, first_name, last_name, avatar_url').in('id', otherIds)
       ;(profs || []).forEach(p => { profilesById[p.id] = p })
     }
 
@@ -98,7 +112,7 @@ export default function Messages({ onUnreadChange }) {
         id: c.id,
         last_message_at: c.last_message_at,
         clearedAt,
-        other: profilesById[otherId] || { id: otherId, first_name: '', last_name: '' },
+        other: profilesById[otherId] || { id: otherId, first_name: '', last_name: '', avatar_url: null },
         preview: last ? previewText(last) : '',
         unread: !!unread,
       }
@@ -117,13 +131,11 @@ export default function Messages({ onUnreadChange }) {
   }
 
   // ---- Messages ------------------------------------------------------------
-
   const loadMessages = useCallback(async (conv) => {
     if (!conv) return
     let query = supabase.from('dm_messages').select('*').eq('conversation_id', conv.id).order('created_at', { ascending: true })
     if (conv.clearedAt) query = query.gt('created_at', conv.clearedAt)
     const { data } = await query
-
     const msgs = data || []
     const ids = msgs.map(m => m.id)
     const byMsg = {}
@@ -167,7 +179,6 @@ export default function Messages({ onUnreadChange }) {
   }
 
   // ---- Effects -------------------------------------------------------------
-
   useEffect(() => { loadConversations() }, [loadConversations])
 
   useEffect(() => {
@@ -186,6 +197,8 @@ export default function Messages({ onUnreadChange }) {
     if (!me) return
     const ch = supabase.channel('dm-conv-list')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'dm_conversations' }, () => loadConversations())
+      // Picks up a new headshot so photos refresh without a reload.
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, () => loadConversations())
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [me, loadConversations])
@@ -197,11 +210,12 @@ export default function Messages({ onUnreadChange }) {
   }, [messages])
 
   // ---- Actions -------------------------------------------------------------
-
   async function openPeople() {
     setShowPicker(true); setSearch('')
     if (!people.length) {
-      const { data } = await supabase.from('profiles').select('id, first_name, last_name').neq('id', me).order('first_name', { ascending: true })
+      const { data } = await supabase
+        .from('profiles').select('id, first_name, last_name, avatar_url')
+        .neq('id', me).order('first_name', { ascending: true })
       setPeople(data || [])
     }
   }
@@ -269,7 +283,6 @@ export default function Messages({ onUnreadChange }) {
   }
 
   // ---- Derived -------------------------------------------------------------
-
   const topLevel = messages.filter(m => !m.parent_id)
   const repliesByParent = {}
   messages.filter(m => m.parent_id).forEach(m => {
@@ -297,7 +310,6 @@ export default function Messages({ onUnreadChange }) {
     const editing = editingId === m.id
     const atts = m.attachments || []
     const canEdit = mine && m.body && !m.deleted_at
-
     return (
       <div
         key={m.id}
@@ -339,7 +351,6 @@ export default function Messages({ onUnreadChange }) {
               )}
             </div>
           )}
-
           {!m.deleted_at && !editing && hoveredId === m.id && (
             <div style={styles.actions}>
               {pickerFor === m.id ? (
@@ -355,7 +366,6 @@ export default function Messages({ onUnreadChange }) {
             </div>
           )}
         </div>
-
         {rx.length > 0 && (
           <div style={{ ...styles.reactions, justifyContent: mine ? 'flex-end' : 'flex-start' }}>
             {rx.map(([emoji, info]) => (
@@ -370,7 +380,6 @@ export default function Messages({ onUnreadChange }) {
   }
 
   // ---- Render --------------------------------------------------------------
-
   return (
     <div style={styles.wrap}>
       <div style={styles.listCol}>
@@ -393,7 +402,7 @@ export default function Messages({ onUnreadChange }) {
             <div style={styles.pickerList}>
               {filteredPeople.map(p => (
                 <button key={p.id} onClick={() => startConversation(p)} style={styles.pickerRow}>
-                  <div style={styles.avatarSm}>{initials(p.first_name, p.last_name)}</div>
+                  <Avatar person={p} style={styles.avatarSm} />
                   <span style={styles.pickerName}>{p.first_name} {p.last_name}</span>
                 </button>
               ))}
@@ -407,7 +416,7 @@ export default function Messages({ onUnreadChange }) {
             const active = activeConv?.id === c.id
             return (
               <button key={c.id} onClick={() => openConversation(c)} style={{ ...styles.convRow, ...(active ? styles.convRowActive : {}) }}>
-                <div style={styles.avatarMd}>{initials(c.other.first_name, c.other.last_name)}</div>
+                <Avatar person={c.other} style={styles.avatarMd} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={styles.convTop}>
                     <span style={styles.convName}>{c.other.first_name} {c.other.last_name}</span>
@@ -434,7 +443,7 @@ export default function Messages({ onUnreadChange }) {
         ) : (
           <>
             <div style={styles.threadHeader}>
-              <div style={styles.avatarSm}>{initials(activeConv.other.first_name, activeConv.other.last_name)}</div>
+              <Avatar person={activeConv.other} style={styles.avatarSm} />
               <span style={styles.threadName}>{activeConv.other.first_name} {activeConv.other.last_name}</span>
               <div style={{ flex: 1 }} />
               <button onClick={deleteChat} aria-label="Delete chat" style={styles.iconBtn}>

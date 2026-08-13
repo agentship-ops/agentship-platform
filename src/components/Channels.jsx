@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import MediaPicker from './MediaPicker'
 
 const CHANNEL = 'agentship'
-const EMOJIS = ['\u2764\uFE0F', '\uD83D\uDC4D', '\uD83D\uDE02', '\uD83C\uDF89', '\uD83D\uDC4F']
+const EMOJIS = ['❤️', '👍', '😂', '🎉', '👏']
 
 export default function Channels() {
   const [currentUser, setCurrentUser] = useState(null)
@@ -36,9 +36,24 @@ export default function Channels() {
       .then(({ data }) => setMyAccountType(data?.account_type ?? null))
   }, [currentUser])
 
+  // avatar_url comes along here so message photos stay current. Photos are
+  // looked up by user_id at render time rather than copied onto each message,
+  // so changing your headshot updates every message you have ever sent.
   useEffect(() => {
-    supabase.from('profiles').select('id, first_name, last_name')
+    supabase.from('profiles').select('id, first_name, last_name, avatar_url')
       .then(({ data }) => setMembers(data || []))
+  }, [])
+
+  // Keep the member list fresh so a new headshot shows up without a reload.
+  useEffect(() => {
+    const ch = supabase
+      .channel('rt-channel-profiles')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, () => {
+        supabase.from('profiles').select('id, first_name, last_name, avatar_url')
+          .then(({ data }) => setMembers(data || []))
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
   }, [])
 
   const load = useCallback(async () => {
@@ -47,9 +62,7 @@ export default function Channels() {
       .select('id, body, parent_id, created_at, user_id, author_first, author_last, author_role, attachments')
       .eq('channel', CHANNEL)
       .order('created_at', { ascending: true })
-
     const { data: rxns } = await supabase.from('message_reactions').select('message_id, emoji, user_id')
-
     const byMsg = {}
     ;(rxns || []).forEach(r => {
       byMsg[r.message_id] = byMsg[r.message_id] || {}
@@ -58,7 +71,6 @@ export default function Channels() {
       if (currentUser && r.user_id === currentUser.id) cell.mine = true
       byMsg[r.message_id][r.emoji] = cell
     })
-
     setMessages((msgs || []).map(m => ({ ...m, reactions: byMsg[m.id] || {} })))
     setLoading(false)
     if (currentUser) { supabase.rpc('mark_channel_read', { p_channel: CHANNEL }) }
@@ -126,7 +138,6 @@ export default function Channels() {
     setMentionState(null)
     setTimeout(() => inputRef.current?.focus(), 0)
   }
-
   function onKeyDown(e) {
     if (mentionState && filteredMembers.length) {
       if (e.key === 'Enter') { e.preventDefault(); pickMention(filteredMembers[0]); return }
@@ -149,6 +160,7 @@ export default function Channels() {
 
   const isStaff = myAccountType === 'admin' || myAccountType === 'leader'
   function canDelete(m) { return isStaff || (currentUser && m.user_id === currentUser.id) }
+
   async function deleteMessage(m) {
     if (!window.confirm('Delete this message? This cannot be undone.')) return
     await supabase.from('messages').delete().eq('id', m.id)
@@ -167,6 +179,12 @@ export default function Channels() {
 
   const initials = (m) => `${(m.author_first?.[0] || '').toUpperCase()}${(m.author_last?.[0] || '').toUpperCase()}` || '?'
   const name = (m) => `${m.author_first || 'Member'}${m.author_last ? ' ' + m.author_last : ''}`
+
+  // id → headshot, built from the live member list
+  const avatarById = {}
+  members.forEach(p => { if (p.avatar_url) avatarById[p.id] = p.avatar_url })
+  const avatarFor = (m) => avatarById[m.user_id] || null
+
   const time = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
   const dayLabel = (iso) => {
     const d = new Date(iso)
@@ -213,6 +231,7 @@ export default function Channels() {
     const tag = isSelf ? 'you' : null
     const rx = Object.entries(m.reactions || {})
     const atts = m.attachments || []
+    const photo = avatarFor(m)
     return (
       <div style={{ ...styles.msg, ...(reply ? styles.msgReply : {}) }}
         onMouseEnter={() => setHoveredId(m.id)}
@@ -235,9 +254,15 @@ export default function Channels() {
             )}
           </div>
         )}
-
-        <div style={{ ...styles.avatar, ...(reply ? styles.avatarSm : {}), ...(isSelf ? styles.avatarSelf : {}) }}>{initials(m)}</div>
-
+        {photo ? (
+          <img
+            src={photo}
+            alt={name(m)}
+            style={{ ...styles.avatar, ...(reply ? styles.avatarSm : {}), ...styles.avatarPhoto }}
+          />
+        ) : (
+          <div style={{ ...styles.avatar, ...(reply ? styles.avatarSm : {}), ...(isSelf ? styles.avatarSelf : {}) }}>{initials(m)}</div>
+        )}
         <div style={styles.msgContent}>
           <div style={styles.meta}>
             <span style={styles.author}>{name(m)}</span>
@@ -286,7 +311,6 @@ export default function Channels() {
           <div style={styles.sub}>Everyone on the platform is here.</div>
         </div>
       </div>
-
       <div style={styles.stream}>
         {loading ? (
           <div style={styles.empty}>Loading...</div>
@@ -321,7 +345,6 @@ export default function Channels() {
         )}
         <div ref={endRef} />
       </div>
-
       <div style={styles.composer}>
         {replyingTo && (
           <div style={styles.replyBar}>
@@ -345,7 +368,11 @@ export default function Channels() {
           <div style={styles.mentionBox}>
             {filteredMembers.map(m => (
               <button key={m.id} onClick={() => pickMention(m)} style={styles.mentionRow}>
-                <span style={styles.mentionAvatar}>{`${(m.first_name?.[0] || '').toUpperCase()}${(m.last_name?.[0] || '').toUpperCase()}`}</span>
+                {m.avatar_url ? (
+                  <img src={m.avatar_url} alt="" style={{ ...styles.mentionAvatar, ...styles.avatarPhoto }} />
+                ) : (
+                  <span style={styles.mentionAvatar}>{`${(m.first_name?.[0] || '').toUpperCase()}${(m.last_name?.[0] || '').toUpperCase()}`}</span>
+                )}
                 <span>{m.first_name} {m.last_name}</span>
               </button>
             ))}
@@ -379,6 +406,7 @@ const styles = {
   avatar: { width: '36px', height: '36px', borderRadius: '50%', background: '#2a2a2a', color: '#ccc', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', flexShrink: 0 },
   avatarSm: { width: '28px', height: '28px', fontSize: '10px' },
   avatarSelf: { background: '#C9A84C', color: '#0A0A0A' },
+  avatarPhoto: { objectFit: 'cover', background: 'transparent', display: 'block' },
   msgContent: { flex: 1, minWidth: 0 },
   meta: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' },
   author: { fontSize: '13px', fontWeight: '600', color: '#fff' },
