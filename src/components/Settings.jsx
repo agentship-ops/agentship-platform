@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import { enablePush, currentPermission, pushSupported } from '../lib/push'
+import { RULES, isValidPassword } from '../lib/passwordRules'
 
 const GOLD = '#C9A84C'
 
@@ -225,8 +226,10 @@ export default function Settings() {
       setPwMsg({ ok: false, text: 'Please fill in all three password fields.' })
       return
     }
-    if (newPw.length < 8) {
-      setPwMsg({ ok: false, text: 'Your new password needs to be at least 8 characters.' })
+    // Requirements come from lib/passwordRules.js, which mirrors what Supabase
+    // enforces. The live checklist above shows them, so this is a backstop.
+    if (!isValidPassword(newPw)) {
+      setPwMsg({ ok: false, text: 'Your new password does not meet all the requirements yet.' })
       return
     }
     if (newPw !== confirmPw) {
@@ -438,20 +441,29 @@ export default function Settings() {
                   autoComplete="new-password"
                   value={newPw}
                   onChange={e => setNewPw(e.target.value)}
-                  placeholder="At least 8 characters"
                 />
               </Field>
               <Field label="Confirm New Password">
                 <input
-                  style={styles.input}
+                  style={{
+                    ...styles.input,
+                    ...(confirmPw.length > 0 && confirmPw !== newPw
+                      ? { borderColor: 'rgba(224,112,112,0.5)' }
+                      : {}),
+                  }}
                   type="password"
                   autoComplete="new-password"
                   value={confirmPw}
                   onChange={e => setConfirmPw(e.target.value)}
-                  placeholder="Re-enter new password"
                 />
               </Field>
             </div>
+
+            <PasswordChecklist password={newPw} />
+
+            {confirmPw.length > 0 && confirmPw !== newPw && (
+              <div style={styles.mismatch}>These two don't match yet</div>
+            )}
 
             {pwMsg && <Banner ok={pwMsg.ok} text={pwMsg.text} />}
 
@@ -576,6 +588,29 @@ function Field({ label, children, note, locked }) {
           {note}
         </div>
       )}
+    </div>
+  )
+}
+
+// Live requirement list, shown before typing so nobody has to guess. Each line
+// turns gold as it's met. Rules live in lib/passwordRules.js so this and the
+// reset page can never disagree.
+function PasswordChecklist({ password }) {
+  return (
+    <div style={styles.checklist}>
+      {RULES.map(rule => {
+        const met = rule.test(password || '')
+        return (
+          <div key={rule.id} style={styles.checkRow}>
+            <span style={{ ...styles.checkDot, ...(met ? styles.checkDotMet : {}) }}>
+              {met ? '✓' : ''}
+            </span>
+            <span style={{ ...styles.checkLabel, ...(met ? styles.checkLabelMet : {}) }}>
+              {rule.label}
+            </span>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -768,5 +803,26 @@ const styles = {
     marginTop: '12px', padding: '10px 14px', borderRadius: '8px',
     fontSize: '12.5px', display: 'flex', alignItems: 'center',
     gap: '8px', lineHeight: 1.45, fontFamily: 'Montserrat, sans-serif',
+  },
+
+  checklist: {
+    display: 'flex', flexDirection: 'column', gap: '7px',
+    padding: '13px 15px', background: '#0d0d0d',
+    border: '1px solid #1e1e1e', borderRadius: '8px',
+  },
+  checkRow: { display: 'flex', alignItems: 'center', gap: '9px' },
+  checkDot: {
+    width: '15px', height: '15px', borderRadius: '50%',
+    border: '1px solid #333', color: '#0A0A0A',
+    fontSize: '9px', fontWeight: '700',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0, lineHeight: 1,
+  },
+  checkDotMet: { background: GOLD, borderColor: GOLD },
+  checkLabel: { fontSize: '11.5px', color: '#6a6a6a', fontFamily: 'Montserrat, sans-serif' },
+  checkLabelMet: { color: GOLD },
+  mismatch: {
+    fontSize: '11.5px', color: '#e07070',
+    fontFamily: 'Montserrat, sans-serif', marginTop: '-8px',
   },
 }
