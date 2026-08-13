@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { RULES, isValidPassword } from '../lib/passwordRules'
 
 // Where an agent lands after clicking the reset link in their email.
 //
@@ -70,12 +71,18 @@ export default function ResetPassword() {
     }
   }, [])
 
+  const meetsRules = isValidPassword(password)
+  const matches = password.length > 0 && password === confirm
+  const canSubmit = meetsRules && matches && !saving
+
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
 
-    if (password.length < 8) {
-      setError('Your new password needs to be at least 8 characters.')
+    // Requirements are shown live above, so this only catches a submit that
+    // slipped through.
+    if (!meetsRules) {
+      setError('Your password does not meet all the requirements yet.')
       return
     }
     if (password !== confirm) {
@@ -88,6 +95,8 @@ export default function ResetPassword() {
     setSaving(false)
 
     if (error) {
+      // Surfaced verbatim so a server rule we haven't mirrored here is still
+      // readable rather than mysterious.
       setError(error.message)
       return
     }
@@ -121,7 +130,6 @@ export default function ResetPassword() {
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="At least 8 characters"
                 required
                 style={styles.input}
                 autoComplete="new-password"
@@ -129,22 +137,33 @@ export default function ResetPassword() {
               />
             </div>
 
+            <PasswordChecklist password={password} />
+
             <div style={styles.fieldGroup}>
               <label style={styles.label}>Confirm New Password</label>
               <input
                 type="password"
                 value={confirm}
                 onChange={e => setConfirm(e.target.value)}
-                placeholder="Re-enter new password"
                 required
-                style={styles.input}
+                style={{
+                  ...styles.input,
+                  ...(confirm.length > 0 && !matches ? styles.inputBad : {}),
+                }}
                 autoComplete="new-password"
               />
+              {confirm.length > 0 && !matches && (
+                <span style={styles.mismatch}>These don't match yet</span>
+              )}
             </div>
 
             {error && <p style={styles.error}>{error}</p>}
 
-            <button type="submit" disabled={saving} style={styles.button}>
+            <button
+              type="submit"
+              disabled={!canSubmit}
+              style={{ ...styles.button, opacity: canSubmit ? 1 : 0.45, cursor: canSubmit ? 'pointer' : 'not-allowed' }}
+            >
               {saving ? 'Saving...' : 'Set New Password'}
             </button>
           </form>
@@ -178,6 +197,28 @@ export default function ResetPassword() {
           Need help? Contact <a href="mailto:operations@agentship.com" style={styles.link}>operations@agentship.com</a>
         </p>
       </div>
+    </div>
+  )
+}
+
+// Live requirement list. Visible before typing so nobody has to guess, and
+// each line turns gold as it's satisfied.
+function PasswordChecklist({ password }) {
+  return (
+    <div style={styles.checklist}>
+      {RULES.map(rule => {
+        const met = rule.test(password || '')
+        return (
+          <div key={rule.id} style={styles.checkRow}>
+            <span style={{ ...styles.checkDot, ...(met ? styles.checkDotMet : {}) }}>
+              {met ? '✓' : ''}
+            </span>
+            <span style={{ ...styles.checkLabel, ...(met ? styles.checkLabelMet : {}) }}>
+              {rule.label}
+            </span>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -262,6 +303,55 @@ const styles = {
     color: '#FFFFFF',
     fontFamily: 'Montserrat, sans-serif',
     boxSizing: 'border-box',
+  },
+  inputBad: {
+    borderColor: 'rgba(224,112,112,0.5)',
+  },
+  mismatch: {
+    fontSize: '11px',
+    color: '#e07070',
+    fontFamily: 'Montserrat, sans-serif',
+  },
+  checklist: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    padding: '12px 14px',
+    background: '#0A0A0A',
+    border: '0.5px solid #2a2a2a',
+    borderRadius: '8px',
+    marginTop: '-6px',
+  },
+  checkRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '9px',
+  },
+  checkDot: {
+    width: '15px',
+    height: '15px',
+    borderRadius: '50%',
+    border: '1px solid #3a3a3a',
+    color: '#0A0A0A',
+    fontSize: '9px',
+    fontWeight: '700',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    lineHeight: 1,
+  },
+  checkDotMet: {
+    background: '#C9A84C',
+    borderColor: '#C9A84C',
+  },
+  checkLabel: {
+    fontSize: '11.5px',
+    color: '#777',
+    fontFamily: 'Montserrat, sans-serif',
+  },
+  checkLabelMet: {
+    color: '#C9A84C',
   },
   error: {
     fontSize: '12px',
