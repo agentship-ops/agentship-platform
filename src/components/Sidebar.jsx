@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 
 const NAV = [
@@ -84,7 +83,6 @@ const NAV = [
 ]
 
 export default function Sidebar({ open, activeView, setActiveView }) {
-  const { profile } = useAuth()
   const [openSections, setOpenSections] = useState(() => {
     const defaults = {}
     NAV.forEach(n => { if (n.type === 'section') defaults[n.id] = n.defaultOpen })
@@ -122,22 +120,6 @@ export default function Sidebar({ open, activeView, setActiveView }) {
     }, 500)
     return () => clearTimeout(t)
   }, [activeView])
-
-  const initials = profile
-    ? `${profile.first_name?.[0] ?? ''}${profile.last_name?.[0] ?? ''}`
-    : '?'
-
-  // `title` is the job title shown under the name (Director of Operations, CEO, Agent).
-  // `account_type` is the permission level (admin, leader, agent) and is never displayed.
-  const ACCOUNT_TYPE_FALLBACK = {
-    admin: 'Admin',
-    leader: 'Leader',
-    agent: 'Agent',
-  }
-  const displayTitle =
-    profile?.title?.trim()
-    || ACCOUNT_TYPE_FALLBACK[profile?.account_type]
-    || 'Agent'
 
   function toggleSection(id) {
     setOpenSections(prev => ({ ...prev, [id]: !prev[id] }))
@@ -227,27 +209,9 @@ export default function Sidebar({ open, activeView, setActiveView }) {
         })}
       </nav>
 
-      {/* Footer is identity only — who is signed in. Settings and sign out live
-          behind the gear icon in the top bar. */}
-      <div style={styles.footer}>
-        {profile?.avatar_url ? (
-          <img
-            src={profile.avatar_url}
-            alt={`${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || 'Your headshot'}
-            style={styles.avatarImg}
-          />
-        ) : (
-          <div style={styles.avatar}>{initials}</div>
-        )}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: '13px', fontWeight: '600', color: '#ffffff' }}>
-            {profile ? `${profile.first_name} ${profile.last_name}` : 'Agent'}
-          </div>
-          <div style={{ fontSize: '11px', color: '#777777', marginTop: '1px' }}>
-            {displayTitle}
-          </div>
-        </div>
-      </div>
+      {/* No footer here on purpose. Your photo, name, title, and sign out all
+          live behind the avatar in the top right, so nothing is duplicated and
+          all seven nav sections fit without scrolling. */}
     </aside>
   )
 }
@@ -345,35 +309,5 @@ const styles = {
     padding: '2px 7px',
     borderRadius: '8px',
     marginLeft: 'auto',
-  },
-  footer: {
-    padding: '14px 16px',
-    borderTop: '1px solid #2a2a2a',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    flexShrink: 0,
-  },
-  avatar: {
-    width: '32px',
-    height: '32px',
-    borderRadius: '50%',
-    background: '#C9A84C',
-    color: '#0A0A0A',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '11px',
-    fontWeight: '700',
-    flexShrink: 0,
-  },
-  avatarImg: {
-    width: '32px',
-    height: '32px',
-    borderRadius: '50%',
-    objectFit: 'cover',
-    flexShrink: 0,
-    border: '1px solid #2a2a2a',
-    display: 'block',
   },
 }

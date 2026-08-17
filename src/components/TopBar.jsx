@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
 
 function IconMenu() {
   return (
@@ -25,17 +26,53 @@ function IconBell() {
     </svg>
   )
 }
-function IconGear() {
+function IconChevron({ open }) {
   return (
-    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3"/>
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    <svg
+      width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+      style={{ transition: 'transform 0.18s', transform: open ? 'rotate(180deg)' : 'none' }}
+    >
+      <polyline points="6 9 12 15 18 9"/>
+    </svg>
+  )
+}
+function IconUser() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+    </svg>
+  )
+}
+function IconShield() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+  )
+}
+function IconBellSmall() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+    </svg>
+  )
+}
+function IconLogout() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16 17 21 12 16 7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
     </svg>
   )
 }
 
 const CHANNEL_TO_VIEW = { agentship: 'ch-agentship' }
 const CHANNEL_LABEL = { agentship: '# Agentship' }
+
+// Must match the boolean columns on notification_prefs.
+const PREF_KEYS = ['dm', 'mentions', 'replies', 'events', 'bullpen', 'referrals', 'channels', 'training', 'resources']
 
 function actorName(n) {
   return `${n.actor_first || 'Someone'}${n.actor_last ? ' ' + n.actor_last : ''}`
@@ -55,10 +92,17 @@ function timeAgo(iso) {
 }
 
 export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0, activeView }) {
+  const { profile, signOut } = useAuth()
+
   const [notifOpen, setNotifOpen] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
   const [notifications, setNotifications] = useState([])
+  const [prefsOnCount, setPrefsOnCount] = useState(null)
+  const [avatarHover, setAvatarHover] = useState(false)
+
   const notifRef = useRef(null)
+  const accountRef = useRef(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setCurrentUser(data?.session?.user ?? null))
@@ -91,12 +135,21 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0, acti
     return () => { supabase.removeChannel(ch) }
   }, [loadNotifs, currentUser])
 
+  // Both dropdowns close on an outside click or Escape.
   useEffect(() => {
     function handleClick(e) {
       if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false)
+      if (accountRef.current && !accountRef.current.contains(e.target)) setAccountOpen(false)
+    }
+    function handleKey(e) {
+      if (e.key === 'Escape') { setNotifOpen(false); setAccountOpen(false) }
     }
     document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleKey)
+    }
   }, [])
 
   const unreadCount = notifications.filter(n => !n.read).length
@@ -111,7 +164,31 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0, acti
   function toggleBell() {
     const willOpen = !notifOpen
     setNotifOpen(willOpen)
+    setAccountOpen(false)
     if (willOpen) markAllRead()
+  }
+
+  // Read the notification preferences each time the menu opens, so the
+  // "6 ON" summary is accurate right after someone changes a toggle.
+  async function toggleAccount() {
+    const willOpen = !accountOpen
+    setAccountOpen(willOpen)
+    setNotifOpen(false)
+    if (willOpen && currentUser) {
+      const { data } = await supabase
+        .from('notification_prefs')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .maybeSingle()
+      if (data) {
+        setPrefsOnCount(PREF_KEYS.filter(k => data[k]).length)
+      }
+    }
+  }
+
+  function go(view) {
+    setAccountOpen(false)
+    if (onNavigate) onNavigate(view)
   }
 
   function openNotification(n) {
@@ -124,7 +201,17 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0, acti
     if (onNavigate) onNavigate(view)
   }
 
-  const settingsActive = activeView === 'settings'
+  const initials = profile
+    ? `${(profile.first_name?.[0] ?? '').toUpperCase()}${(profile.last_name?.[0] ?? '').toUpperCase()}`
+    : '?'
+  const fullName = profile ? `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() : 'Agent'
+  const displayTitle =
+    profile?.title?.trim()
+    || ({ admin: 'Admin', leader: 'Leader', agent: 'Agent' })[profile?.account_type]
+    || 'Agent'
+
+  const onSettings = typeof activeView === 'string' && activeView.startsWith('settings')
+  const ringActive = accountOpen || onSettings || avatarHover
 
   return (
     <div style={styles.topbar}>
@@ -139,7 +226,7 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0, acti
           <button
             aria-label="Messages"
             style={styles.iconBtn}
-            onClick={() => { if (onNavigate) onNavigate('messages'); setNotifOpen(false) }}
+            onClick={() => { if (onNavigate) onNavigate('messages'); setNotifOpen(false); setAccountOpen(false) }}
           >
             <IconMessage />
           </button>
@@ -149,11 +236,7 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0, acti
         </div>
 
         <div style={{ position: 'relative' }} ref={notifRef}>
-          <button
-            aria-label="Notifications"
-            style={styles.iconBtn}
-            onClick={toggleBell}
-          >
+          <button aria-label="Notifications" style={styles.iconBtn} onClick={toggleBell}>
             <IconBell />
           </button>
           {unreadCount > 0 && <span style={styles.notifDot} />}
@@ -189,23 +272,113 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0, acti
           )}
         </div>
 
-        {/* Settings — opens the full Settings page instead of a popover.
-            Profile photo, password, notification preferences, and sign out
-            all live there now. */}
-        <button
-          aria-label="Settings"
-          style={{
-            ...styles.iconBtn,
-            color: settingsActive ? '#C9A84C' : '#ffffff',
-            background: settingsActive ? 'rgba(201,168,76,0.12)' : 'transparent',
-          }}
-          onClick={() => { if (onNavigate) onNavigate('settings'); setNotifOpen(false) }}
-        >
-          <IconGear />
-        </button>
+        {/* ── Account menu — this replaced the gear icon ── */}
+        <div style={{ position: 'relative' }} ref={accountRef}>
+          <button
+            onClick={toggleAccount}
+            onMouseEnter={() => setAvatarHover(true)}
+            onMouseLeave={() => setAvatarHover(false)}
+            aria-label="Your account"
+            aria-expanded={accountOpen}
+            style={styles.avatarBtn}
+          >
+            {profile?.avatar_url ? (
+              <img
+                src={profile.avatar_url}
+                alt={fullName}
+                style={{
+                  ...styles.avatarImg,
+                  borderColor: ringActive ? '#C9A84C' : 'transparent',
+                }}
+              />
+            ) : (
+              <span
+                style={{
+                  ...styles.avatarInitials,
+                  boxShadow: ringActive ? '0 0 0 2px #C9A84C' : 'none',
+                }}
+              >
+                {initials}
+              </span>
+            )}
+            <span style={{ ...styles.chevWrap, color: ringActive ? '#C9A84C' : '#8a8a8a' }}>
+              <IconChevron open={accountOpen} />
+            </span>
+          </button>
+
+          {accountOpen && (
+            <div style={styles.accountMenu}>
+              <div style={styles.menuHead}>
+                {profile?.avatar_url ? (
+                  <img src={profile.avatar_url} alt="" style={styles.menuAvatarImg} />
+                ) : (
+                  <span style={styles.menuAvatarInitials}>{initials}</span>
+                )}
+                <div style={{ minWidth: 0 }}>
+                  <div style={styles.menuName}>{fullName}</div>
+                  <div style={styles.menuTitle}>{displayTitle}</div>
+                  <div style={styles.menuEmail}>{currentUser?.email}</div>
+                </div>
+              </div>
+
+              <div style={styles.menuList}>
+                <MenuItem
+                  icon={<IconUser />}
+                  label="Profile"
+                  active={activeView === 'settings-profile'}
+                  onClick={() => go('settings-profile')}
+                />
+                <MenuItem
+                  icon={<IconShield />}
+                  label="Account"
+                  active={activeView === 'settings-account'}
+                  onClick={() => go('settings-account')}
+                />
+                <MenuItem
+                  icon={<IconBellSmall />}
+                  label="Notifications"
+                  active={activeView === 'settings-notifications'}
+                  trailing={prefsOnCount === null ? null : `${prefsOnCount} ON`}
+                  onClick={() => go('settings-notifications')}
+                />
+
+                <div style={styles.menuSep} />
+
+                <MenuItem
+                  icon={<IconLogout />}
+                  label="Sign out"
+                  danger
+                  onClick={() => { setAccountOpen(false); signOut() }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
 
       </div>
     </div>
+  )
+}
+
+function MenuItem({ icon, label, onClick, active, danger, trailing }) {
+  const [hover, setHover] = useState(false)
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        ...styles.menuItem,
+        background: hover || active ? '#1f1f1f' : 'transparent',
+        color: danger ? '#e07070' : '#e9e9e9',
+      }}
+    >
+      <span style={{ display: 'flex', color: danger ? '#e07070' : (active ? '#C9A84C' : '#8a8a8a') }}>
+        {icon}
+      </span>
+      {label}
+      {trailing && <span style={styles.menuCount}>{trailing}</span>}
+    </button>
   )
 }
 
@@ -221,130 +394,123 @@ const styles = {
     flexShrink: 0,
   },
   hbtn: {
-    width: '36px',
-    height: '36px',
-    borderRadius: '8px',
-    background: 'transparent',
-    border: 'none',
-    color: '#C9A84C',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
+    width: '36px', height: '36px', borderRadius: '8px',
+    background: 'transparent', border: 'none', color: '#C9A84C',
+    cursor: 'pointer', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', flexShrink: 0,
   },
   agentship: {
-    fontSize: '17px',
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: '4px',
-    textTransform: 'uppercase',
-    fontFamily: 'Montserrat, sans-serif',
-    flexShrink: 0,
+    fontSize: '17px', fontWeight: '700', color: '#FFFFFF',
+    letterSpacing: '4px', textTransform: 'uppercase',
+    fontFamily: 'Montserrat, sans-serif', flexShrink: 0,
   },
-  right: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '4px',
-    flexShrink: 0,
-  },
+  right: { display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 },
   iconBtn: {
-    width: '36px',
-    height: '36px',
-    borderRadius: '8px',
-    background: 'transparent',
-    border: 'none',
-    color: '#ffffff',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: '36px', height: '36px', borderRadius: '8px',
+    background: 'transparent', border: 'none', color: '#ffffff',
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
+
+  avatarBtn: {
+    display: 'flex', alignItems: 'center', gap: '5px',
+    background: 'transparent', border: 'none', cursor: 'pointer',
+    padding: '3px 4px 3px 3px', borderRadius: '20px', marginLeft: '5px',
+  },
+  avatarImg: {
+    width: '33px', height: '33px', borderRadius: '50%',
+    objectFit: 'cover', display: 'block',
+    border: '2px solid transparent', transition: 'border-color 0.16s',
+  },
+  avatarInitials: {
+    width: '33px', height: '33px', borderRadius: '50%',
+    background: '#C9A84C', color: '#0A0A0A',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: '11px', fontWeight: '700',
+    fontFamily: 'Montserrat, sans-serif',
+    transition: 'box-shadow 0.16s',
+  },
+  chevWrap: { display: 'flex', alignItems: 'center', transition: 'color 0.16s' },
+
+  accountMenu: {
+    position: 'absolute', top: '48px', right: 0, width: '258px',
+    background: '#161616', border: '1px solid #2f2f2f', borderRadius: '12px',
+    boxShadow: '0 16px 44px rgba(0,0,0,0.75)', zIndex: 300, overflow: 'hidden',
+  },
+  menuHead: {
+    display: 'flex', alignItems: 'center', gap: '12px',
+    padding: '15px 16px', borderBottom: '1px solid #232323',
+  },
+  menuAvatarImg: {
+    width: '42px', height: '42px', borderRadius: '50%',
+    objectFit: 'cover', flexShrink: 0, display: 'block',
+  },
+  menuAvatarInitials: {
+    width: '42px', height: '42px', borderRadius: '50%',
+    background: '#C9A84C', color: '#0A0A0A',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: '13.5px', fontWeight: '700', flexShrink: 0,
+    fontFamily: 'Montserrat, sans-serif',
+  },
+  menuName: {
+    fontSize: '13.5px', fontWeight: '700', color: '#fff', lineHeight: 1.25,
+    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+  },
+  menuTitle: { fontSize: '11px', color: '#8a8a8a', marginTop: '2px' },
+  menuEmail: {
+    fontSize: '10.5px', color: '#5a5a5a', marginTop: '3px',
+    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+  },
+  menuList: { padding: '6px' },
+  menuItem: {
+    width: '100%', display: 'flex', alignItems: 'center', gap: '12px',
+    padding: '10.5px 12px', borderRadius: '8px', border: 'none',
+    fontSize: '13.5px', fontWeight: '500', cursor: 'pointer',
+    textAlign: 'left', fontFamily: 'Montserrat, sans-serif',
+    transition: 'background 0.12s',
+  },
+  menuCount: {
+    marginLeft: 'auto', fontSize: '9.5px', fontWeight: '700',
+    color: '#555', letterSpacing: '0.06em',
+  },
+  menuSep: { height: '1px', background: '#232323', margin: '6px 4px' },
+
   msgBadge: {
-    position: 'absolute',
-    top: '2px',
-    right: '2px',
-    minWidth: '15px',
-    height: '15px',
-    padding: '0 4px',
-    borderRadius: '8px',
-    background: '#C9A84C',
-    color: '#0A0A0A',
-    fontSize: '9px',
-    fontWeight: '700',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    border: '1.5px solid #0f0f0f',
-    pointerEvents: 'none',
+    position: 'absolute', top: '2px', right: '2px',
+    minWidth: '15px', height: '15px', padding: '0 4px', borderRadius: '8px',
+    background: '#C9A84C', color: '#0A0A0A', fontSize: '9px', fontWeight: '700',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    border: '1.5px solid #0f0f0f', pointerEvents: 'none',
     fontFamily: 'Montserrat, sans-serif',
   },
   notifDot: {
-    display: 'block',
-    width: '7px',
-    height: '7px',
-    borderRadius: '50%',
-    background: '#C9A84C',
-    position: 'absolute',
-    top: '5px',
-    right: '5px',
+    display: 'block', width: '7px', height: '7px', borderRadius: '50%',
+    background: '#C9A84C', position: 'absolute', top: '5px', right: '5px',
     pointerEvents: 'none',
   },
   dropdown: {
-    position: 'absolute',
-    top: '44px',
-    right: '-8px',
-    width: '260px',
-    background: '#1E1E1E',
-    border: '0.5px solid #2a2a2a',
-    borderRadius: '10px',
-    padding: '14px 16px',
-    zIndex: 200,
-    boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+    position: 'absolute', top: '44px', right: '-8px', width: '260px',
+    background: '#1E1E1E', border: '0.5px solid #2a2a2a', borderRadius: '10px',
+    padding: '14px 16px', zIndex: 200, boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
   },
   dropdownTitle: {
-    fontSize: '10px',
-    fontWeight: '600',
-    color: '#888',
-    letterSpacing: '1px',
-    textTransform: 'uppercase',
-    marginBottom: '10px',
+    fontSize: '10px', fontWeight: '600', color: '#888', letterSpacing: '1px',
+    textTransform: 'uppercase', marginBottom: '10px',
     fontFamily: 'Montserrat, sans-serif',
   },
   dropdownEmpty: {
-    fontSize: '13px',
-    color: '#555',
-    fontFamily: 'Montserrat, sans-serif',
-    lineHeight: 1.5,
+    fontSize: '13px', color: '#555',
+    fontFamily: 'Montserrat, sans-serif', lineHeight: 1.5,
   },
   notifList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '2px',
-    maxHeight: '320px',
-    overflowY: 'auto',
-    margin: '0 -8px',
+    display: 'flex', flexDirection: 'column', gap: '2px',
+    maxHeight: '320px', overflowY: 'auto', margin: '0 -8px',
   },
   notifItem: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '2px',
-    width: '100%',
-    textAlign: 'left',
-    background: 'transparent',
-    border: 'none',
-    cursor: 'pointer',
-    padding: '9px 8px',
-    borderRadius: '7px',
+    display: 'flex', flexDirection: 'column', gap: '2px', width: '100%',
+    textAlign: 'left', background: 'transparent', border: 'none',
+    cursor: 'pointer', padding: '9px 8px', borderRadius: '7px',
     fontFamily: 'Montserrat, sans-serif',
   },
-  notifLine: {
-    fontSize: '13px',
-    color: '#ccc',
-    lineHeight: 1.4,
-  },
-  notifSub: {
-    fontSize: '11px',
-    color: '#777',
-  },
+  notifLine: { fontSize: '13px', color: '#ccc', lineHeight: 1.4 },
+  notifSub: { fontSize: '11px', color: '#777' },
 }

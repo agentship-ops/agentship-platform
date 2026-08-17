@@ -3,16 +3,23 @@ import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import { enablePush, currentPermission, pushSupported } from '../lib/push'
 import { RULES, isValidPassword } from '../lib/passwordRules'
+import ImageCropper from './ImageCropper'
 
 const GOLD = '#C9A84C'
 
-// Grouped to mirror the sidebar so the page reads like the platform.
+// Reached from the account menu on your photo, top right. Three short screens
+// rather than one long page — Profile, Account, Notifications. Sign out lives
+// in the menu itself, not down here.
+const TABS = [
+  { id: 'profile', label: 'Profile', view: 'settings-profile' },
+  { id: 'account', label: 'Account', view: 'settings-account' },
+  { id: 'notifications', label: 'Notifications', view: 'settings-notifications' },
+]
+
 // `key` matches a boolean column on public.notification_prefs.
 const NOTIF_GROUPS = [
   {
-    id: 'personal',
-    label: 'Just for You',
-    icon: 'ti-user',
+    id: 'personal', label: 'Just for You', icon: 'ti-user',
     rows: [
       { key: 'dm', label: 'Direct messages', desc: 'Someone sends you a private message' },
       { key: 'mentions', label: "When you're @mentioned", desc: 'Someone tags you by name anywhere on the platform' },
@@ -20,9 +27,7 @@ const NOTIF_GROUPS = [
     ],
   },
   {
-    id: 'community',
-    label: 'Community',
-    icon: 'ti-users',
+    id: 'community', label: 'Community', icon: 'ti-users',
     rows: [
       { key: 'events', label: 'Events', desc: "A new event is posted, or one you RSVP'd to changes" },
       { key: 'bullpen', label: 'Bullpen', desc: 'A new announcement or post goes up in the Bullpen' },
@@ -30,17 +35,13 @@ const NOTIF_GROUPS = [
     ],
   },
   {
-    id: 'channels',
-    label: 'Channels',
-    icon: 'ti-messages',
+    id: 'channels', label: 'Channels', icon: 'ti-messages',
     rows: [
       { key: 'channels', label: 'All channel messages', desc: "Every message posted in a channel you're in. Leave this off and you'll still get @mentions." },
     ],
   },
   {
-    id: 'library',
-    label: 'Training & Resources',
-    icon: 'ti-folder',
+    id: 'library', label: 'Training & Resources', icon: 'ti-folder',
     rows: [
       { key: 'training', label: 'New training added', desc: 'A video or course is added to the Training Library' },
       { key: 'resources', label: 'New resource added', desc: 'A script, sheet, or vendor doc is added to the Resource Library' },
@@ -48,43 +49,412 @@ const NOTIF_GROUPS = [
   },
 ]
 
-const PREF_KEYS = NOTIF_GROUPS.flatMap(g => g.rows.map(r => r.key))
+export default function Settings({ section = 'profile', onSectionChange }) {
+  const { user, profile, updateProfile } = useAuth()
 
-export default function Settings() {
-  const { user, profile, updateProfile, signOut } = useAuth()
+  const active = TABS.some(t => t.id === section) ? section : 'profile'
 
-  // ── Profile ──────────────────────────────────────────────────
+  return (
+    <div style={styles.page}>
+      <div style={styles.wrap}>
+        <div style={styles.pgTitle}>
+          {active === 'profile' ? 'Profile' : active === 'account' ? 'Account' : 'Notifications'}
+        </div>
+        <div style={styles.pgSub}>
+          {active === 'profile' && 'Your photo, name, and phone number.'}
+          {active === 'account' && 'How you sign in.'}
+          {active === 'notifications' && 'Choose what reaches you.'}
+        </div>
+
+        <div style={styles.tabs}>
+          {TABS.map(t => (
+            <button
+              key={t.id}
+              onClick={() => onSectionChange && onSectionChange(t.view)}
+              style={{
+                ...styles.tab,
+                ...(active === t.id ? styles.tabOn : {}),
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {active === 'profile' && (
+          <ProfileSection user={user} profile={profile} updateProfile={updateProfile} />
+        )}
+        {active === 'account' && <AccountSection user={user} />}
+        {active === 'notifications' && <NotificationsSection user={user} />}
+      </div>
+    </div>
+  )
+}
+
+/* ══════════════════ PROFILE ══════════════════ */
+
+function ProfileSection({ user, profile, updateProfile }) {
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [phone, setPhone] = useState('')
-  const [savingProfile, setSavingProfile] = useState(false)
-  const [profileMsg, setProfileMsg] = useState(null) // { ok, text }
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState(null)
 
-  // ── Photo ────────────────────────────────────────────────────
+  const [pendingFile, setPendingFile] = useState(null)
   const [uploading, setUploading] = useState(false)
   const [photoMsg, setPhotoMsg] = useState(null)
   const fileRef = useRef(null)
 
-  // ── Password ─────────────────────────────────────────────────
-  const [currentPw, setCurrentPw] = useState('')
-  const [newPw, setNewPw] = useState('')
-  const [confirmPw, setConfirmPw] = useState('')
-  const [savingPw, setSavingPw] = useState(false)
-  const [pwMsg, setPwMsg] = useState(null)
-
-  // ── Notifications ────────────────────────────────────────────
-  const [prefs, setPrefs] = useState(null)
-  const [perm, setPerm] = useState(currentPermission())
-  const [pushBusy, setPushBusy] = useState(false)
-  const [pushMsg, setPushMsg] = useState('')
-
-  // Hydrate the profile form once the profile arrives.
   useEffect(() => {
     if (!profile) return
     setFirstName(profile.first_name ?? '')
     setLastName(profile.last_name ?? '')
     setPhone(profile.phone ?? '')
   }, [profile])
+
+  const initials =
+    `${(profile?.first_name?.[0] ?? '').toUpperCase()}${(profile?.last_name?.[0] ?? '').toUpperCase()}` || '?'
+  const displayTitle = profile?.title?.trim()
+    || ({ admin: 'Admin', leader: 'Leader', agent: 'Agent' })[profile?.account_type]
+    || 'Agent'
+
+  // Pick a file → open the cropper. Nothing is uploaded until it's framed.
+  function pickFile(e) {
+    const file = e.target.files?.[0]
+    if (fileRef.current) fileRef.current.value = ''
+    if (!file) return
+    setPhotoMsg(null)
+
+    if (!file.type.startsWith('image/')) {
+      setPhotoMsg({ ok: false, text: 'Please choose an image file (JPG or PNG).' })
+      return
+    }
+    // Generous, because the cropper shrinks whatever comes in down to 400px.
+    if (file.size > 15 * 1024 * 1024) {
+      setPhotoMsg({ ok: false, text: 'That image is over 15MB. Please choose a smaller one.' })
+      return
+    }
+    setPendingFile(file)
+  }
+
+  // The cropper hands back a 400x400 JPEG, so the stored file is always
+  // headshot.jpg regardless of what was chosen.
+  async function handleCropped(blob) {
+    setPendingFile(null)
+    if (!user) return
+    setUploading(true)
+    setPhotoMsg(null)
+
+    try {
+      const path = `${user.id}/headshot.jpg`
+
+      // Clear anything else in this person's folder so old files don't linger.
+      const { data: existing } = await supabase.storage.from('avatars').list(user.id)
+      const stale = (existing || [])
+        .filter(f => f.name !== 'headshot.jpg' && f.name !== '.emptyFolderPlaceholder')
+        .map(f => `${user.id}/${f.name}`)
+      if (stale.length) await supabase.storage.from('avatars').remove(stale)
+
+      const { error: upErr } = await supabase.storage
+        .from('avatars')
+        .upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
+      if (upErr) throw upErr
+
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
+
+      // Cache-buster, or the browser keeps serving the previous photo from the
+      // identical URL.
+      const { error: profErr } = await updateProfile({ avatar_url: `${publicUrl}?v=${Date.now()}` })
+      if (profErr) throw profErr
+
+      setPhotoMsg({ ok: true, text: 'Photo updated.' })
+    } catch (err) {
+      setPhotoMsg({ ok: false, text: err.message || 'Upload failed. Please try again.' })
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function removePhoto() {
+    if (!user) return
+    setUploading(true)
+    setPhotoMsg(null)
+    try {
+      const { data: existing } = await supabase.storage.from('avatars').list(user.id)
+      const paths = (existing || [])
+        .filter(f => f.name !== '.emptyFolderPlaceholder')
+        .map(f => `${user.id}/${f.name}`)
+      if (paths.length) await supabase.storage.from('avatars').remove(paths)
+      const { error } = await updateProfile({ avatar_url: null })
+      if (error) throw error
+      setPhotoMsg({ ok: true, text: 'Photo removed.' })
+    } catch (err) {
+      setPhotoMsg({ ok: false, text: err.message || 'Could not remove the photo.' })
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function save() {
+    if (!firstName.trim() || !lastName.trim()) {
+      setMsg({ ok: false, text: 'First and last name are both required.' })
+      return
+    }
+    setSaving(true)
+    setMsg(null)
+    const { error } = await updateProfile({
+      first_name: firstName.trim(),
+      last_name: lastName.trim(),
+      phone: phone.trim() || null,
+    })
+    setSaving(false)
+    setMsg(error ? { ok: false, text: error.message } : { ok: true, text: 'Saved.' })
+  }
+
+  return (
+    <>
+      {pendingFile && (
+        <ImageCropper
+          file={pendingFile}
+          onCancel={() => setPendingFile(null)}
+          onDone={handleCropped}
+        />
+      )}
+
+      <div style={styles.card}>
+        <div style={styles.cBody}>
+          <div style={styles.photoRow}>
+            <div style={styles.photoWrap}>
+              {profile?.avatar_url ? (
+                <img src={profile.avatar_url} alt="Your headshot" style={styles.photoImg} />
+              ) : (
+                <div style={styles.photoInitials}>{initials}</div>
+              )}
+              <div style={styles.photoBadge}>
+                <i className="ti ti-camera" aria-hidden="true" />
+              </div>
+            </div>
+
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={styles.photoName}>
+                {profile ? `${profile.first_name ?? ''} ${profile.last_name ?? ''}` : 'Agent'}
+              </div>
+              <div style={styles.photoRole}>{displayTitle}</div>
+
+              <div style={styles.photoActions}>
+                <input
+                  ref={fileRef}
+                  id="headshot-input"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/heic"
+                  onChange={pickFile}
+                  style={{ display: 'none' }}
+                />
+                <label
+                  htmlFor="headshot-input"
+                  style={{
+                    ...styles.btnGold,
+                    display: 'inline-block',
+                    opacity: uploading ? 0.55 : 1,
+                    cursor: uploading ? 'not-allowed' : 'pointer',
+                    pointerEvents: uploading ? 'none' : 'auto',
+                  }}
+                >
+                  {uploading ? 'Working...' : profile?.avatar_url ? 'Change Photo' : 'Upload Photo'}
+                </label>
+                {profile?.avatar_url && !uploading && (
+                  <button onClick={removePhoto} style={styles.btnOutline}>Remove</button>
+                )}
+              </div>
+
+              <div style={styles.hint}>
+                After you pick a photo you can drag and zoom to frame your face in the circle.
+                Shows next to your name in channels, messages, and the directory.
+              </div>
+
+              {photoMsg && <Banner ok={photoMsg.ok} text={photoMsg.text} />}
+            </div>
+          </div>
+
+          <div style={styles.rule} />
+
+          <div style={styles.fRow}>
+            <Field label="First Name">
+              <input style={styles.input} value={firstName} onChange={e => setFirstName(e.target.value)} />
+            </Field>
+            <Field label="Last Name">
+              <input style={styles.input} value={lastName} onChange={e => setLastName(e.target.value)} />
+            </Field>
+          </div>
+
+          <Field label="Mobile Phone" note="Shown in the directory so the team can reach you.">
+            <input
+              style={styles.input}
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              placeholder="(770) 555-0142"
+            />
+          </Field>
+
+          <Field label="Title" locked note="Set by Agentship. Reach out if this needs to change.">
+            <input style={{ ...styles.input, ...styles.inputLocked }} value={displayTitle} disabled />
+          </Field>
+
+          {msg && <Banner ok={msg.ok} text={msg.text} />}
+
+          <div style={styles.save}>
+            <button onClick={save} disabled={saving} style={{ ...styles.btnGold, opacity: saving ? 0.55 : 1 }}>
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+/* ══════════════════ ACCOUNT ══════════════════ */
+
+function AccountSection({ user }) {
+  const [currentPw, setCurrentPw] = useState('')
+  const [newPw, setNewPw] = useState('')
+  const [confirmPw, setConfirmPw] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState(null)
+
+  const meetsRules = isValidPassword(newPw)
+  const matches = confirmPw.length > 0 && newPw === confirmPw
+
+  async function changePassword() {
+    setMsg(null)
+
+    if (!currentPw || !newPw || !confirmPw) {
+      setMsg({ ok: false, text: 'Please fill in all three password fields.' })
+      return
+    }
+    if (!meetsRules) {
+      setMsg({ ok: false, text: 'Your new password does not meet all the requirements yet.' })
+      return
+    }
+    if (newPw !== confirmPw) {
+      setMsg({ ok: false, text: "Those new passwords don't match." })
+      return
+    }
+    if (newPw === currentPw) {
+      setMsg({ ok: false, text: 'Your new password must be different from your current one.' })
+      return
+    }
+
+    setSaving(true)
+
+    // Supabase lets a live session set a new password without proving the old
+    // one. Verifying first stops a walk-up on an unlocked laptop.
+    const { error: reauthErr } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: currentPw,
+    })
+    if (reauthErr) {
+      setSaving(false)
+      setMsg({ ok: false, text: 'That current password is not correct.' })
+      return
+    }
+
+    const { error } = await supabase.auth.updateUser({ password: newPw })
+    setSaving(false)
+
+    if (error) {
+      setMsg({ ok: false, text: error.message })
+      return
+    }
+
+    setCurrentPw(''); setNewPw(''); setConfirmPw('')
+    setMsg({ ok: true, text: 'Password updated. Use it next time you sign in.' })
+  }
+
+  return (
+    <>
+      <div style={styles.card}>
+        <div style={styles.cBody}>
+          <div style={styles.signInAs}>
+            <i className="ti ti-mail" aria-hidden="true" style={{ fontSize: '16px', color: '#666' }} />
+            <div>
+              <div style={styles.signInLabel}>You sign in as</div>
+              <div style={styles.signInValue}>{user?.email}</div>
+            </div>
+            <i className="ti ti-lock" aria-hidden="true" style={{ marginLeft: 'auto', fontSize: '14px', color: '#4a4a4a' }} />
+          </div>
+          <div style={styles.signInNote}>
+            Your Agentship email is your login and can't be changed here.
+          </div>
+        </div>
+      </div>
+
+      <div style={styles.card}>
+        <div style={styles.cHead}>
+          <div style={styles.cKicker}>Password</div>
+          <div style={styles.cTitle}>Change your password</div>
+        </div>
+        <div style={styles.cBody}>
+          <Field label="Current Password">
+            <input
+              style={styles.input}
+              type="password"
+              autoComplete="current-password"
+              value={currentPw}
+              onChange={e => setCurrentPw(e.target.value)}
+            />
+          </Field>
+
+          <div style={styles.fRow}>
+            <Field label="New Password">
+              <input
+                style={styles.input}
+                type="password"
+                autoComplete="new-password"
+                value={newPw}
+                onChange={e => setNewPw(e.target.value)}
+              />
+            </Field>
+            <Field label="Confirm New Password">
+              <input
+                style={{
+                  ...styles.input,
+                  ...(confirmPw.length > 0 && !matches ? { borderColor: 'rgba(224,112,112,0.5)' } : {}),
+                }}
+                type="password"
+                autoComplete="new-password"
+                value={confirmPw}
+                onChange={e => setConfirmPw(e.target.value)}
+              />
+            </Field>
+          </div>
+
+          <PasswordChecklist password={newPw} />
+
+          {confirmPw.length > 0 && !matches && (
+            <div style={styles.mismatch}>These two don't match yet</div>
+          )}
+
+          {msg && <Banner ok={msg.ok} text={msg.text} />}
+
+          <div style={styles.save}>
+            <button onClick={changePassword} disabled={saving} style={{ ...styles.btnGold, opacity: saving ? 0.55 : 1 }}>
+              {saving ? 'Updating...' : 'Update Password'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+/* ══════════════════ NOTIFICATIONS ══════════════════ */
+
+function NotificationsSection({ user }) {
+  const [prefs, setPrefs] = useState(null)
+  const [perm, setPerm] = useState(currentPermission())
+  const [pushBusy, setPushBusy] = useState(false)
+  const [pushMsg, setPushMsg] = useState('')
 
   const loadPrefs = useCallback(async () => {
     if (!user) return
@@ -96,192 +466,34 @@ export default function Settings() {
 
     if (data) {
       setPrefs(data)
-    } else {
-      // No row yet (user created before the migration backfill). Create one.
-      const { data: created } = await supabase
-        .from('notification_prefs')
-        .insert({ user_id: user.id })
-        .select()
-        .maybeSingle()
-      setPrefs(created ?? defaultPrefs(user.id))
+      return
     }
+    const { data: created } = await supabase
+      .from('notification_prefs')
+      .insert({ user_id: user.id })
+      .select()
+      .maybeSingle()
+    setPrefs(created ?? {
+      user_id: user.id,
+      dm: true, mentions: true, replies: true,
+      events: true, bullpen: true, referrals: true,
+      channels: false, training: true, resources: true,
+    })
   }, [user])
 
   useEffect(() => { loadPrefs() }, [loadPrefs])
 
-  function defaultPrefs(uid) {
-    return {
-      user_id: uid,
-      dm: true, mentions: true, replies: true,
-      events: true, bullpen: true, referrals: true,
-      channels: false,
-      training: true, resources: true,
-    }
-  }
-
-  const initials =
-    `${(profile?.first_name?.[0] ?? '').toUpperCase()}${(profile?.last_name?.[0] ?? '').toUpperCase()}` || '?'
-
-  const displayTitle = profile?.title?.trim()
-    || ({ admin: 'Admin', leader: 'Leader', agent: 'Agent' })[profile?.account_type]
-    || 'Agent'
-
-  // ── Photo actions ────────────────────────────────────────────
-  async function handleFile(e) {
-    const file = e.target.files?.[0]
-    if (!file || !user) return
-
-    if (!file.type.startsWith('image/')) {
-      setPhotoMsg({ ok: false, text: 'Please choose an image file (JPG or PNG).' })
-      if (fileRef.current) fileRef.current.value = ''
-      return
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setPhotoMsg({ ok: false, text: 'That image is over 5MB. Please choose a smaller one.' })
-      if (fileRef.current) fileRef.current.value = ''
-      return
-    }
-
-    setUploading(true)
-    setPhotoMsg(null)
-
-    try {
-      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
-      const path = `${user.id}/headshot.${ext}`
-
-      // Clear out any previous headshot so a jpg → png swap doesn't leave
-      // an orphaned file behind in the bucket.
-      const { data: existing } = await supabase.storage.from('avatars').list(user.id)
-      const stale = (existing || [])
-        .filter(f => f.name !== `headshot.${ext}`)
-        .map(f => `${user.id}/${f.name}`)
-      if (stale.length) await supabase.storage.from('avatars').remove(stale)
-
-      const { error: upErr } = await supabase.storage
-        .from('avatars')
-        .upload(path, file, { upsert: true, contentType: file.type })
-      if (upErr) throw upErr
-
-      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
-
-      // Cache-bust so the new photo appears immediately instead of the
-      // browser serving the old one from cache at the same URL.
-      const { error: profErr } = await updateProfile({ avatar_url: `${publicUrl}?v=${Date.now()}` })
-      if (profErr) throw profErr
-
-      setPhotoMsg({ ok: true, text: 'Photo updated.' })
-    } catch (err) {
-      setPhotoMsg({ ok: false, text: err.message || 'Upload failed. Please try again.' })
-    } finally {
-      setUploading(false)
-      if (fileRef.current) fileRef.current.value = ''
-    }
-  }
-
-  async function removePhoto() {
-    if (!user) return
-    setUploading(true)
-    setPhotoMsg(null)
-    try {
-      const { data: existing } = await supabase.storage.from('avatars').list(user.id)
-      if (existing?.length) {
-        await supabase.storage.from('avatars').remove(existing.map(f => `${user.id}/${f.name}`))
-      }
-      const { error } = await updateProfile({ avatar_url: null })
-      if (error) throw error
-      setPhotoMsg({ ok: true, text: 'Photo removed.' })
-    } catch (err) {
-      setPhotoMsg({ ok: false, text: err.message || 'Could not remove the photo.' })
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  // ── Profile save ─────────────────────────────────────────────
-  async function saveProfile() {
-    if (!firstName.trim() || !lastName.trim()) {
-      setProfileMsg({ ok: false, text: 'First and last name are both required.' })
-      return
-    }
-    setSavingProfile(true)
-    setProfileMsg(null)
-
-    const { error } = await updateProfile({
-      first_name: firstName.trim(),
-      last_name: lastName.trim(),
-      phone: phone.trim() || null,
-    })
-
-    setSavingProfile(false)
-    setProfileMsg(error
-      ? { ok: false, text: error.message }
-      : { ok: true, text: 'Saved.' })
-  }
-
-  // ── Password change ──────────────────────────────────────────
-  async function changePassword() {
-    setPwMsg(null)
-
-    if (!currentPw || !newPw || !confirmPw) {
-      setPwMsg({ ok: false, text: 'Please fill in all three password fields.' })
-      return
-    }
-    // Requirements come from lib/passwordRules.js, which mirrors what Supabase
-    // enforces. The live checklist above shows them, so this is a backstop.
-    if (!isValidPassword(newPw)) {
-      setPwMsg({ ok: false, text: 'Your new password does not meet all the requirements yet.' })
-      return
-    }
-    if (newPw !== confirmPw) {
-      setPwMsg({ ok: false, text: "Those new passwords don't match." })
-      return
-    }
-    if (newPw === currentPw) {
-      setPwMsg({ ok: false, text: 'Your new password must be different from your current one.' })
-      return
-    }
-
-    setSavingPw(true)
-
-    // Supabase lets you set a new password without proving the old one, so we
-    // verify the current password first by signing in with it. This keeps a
-    // walk-up on an unlocked laptop from changing someone's password.
-    const { error: reauthErr } = await supabase.auth.signInWithPassword({
-      email: user.email,
-      password: currentPw,
-    })
-    if (reauthErr) {
-      setSavingPw(false)
-      setPwMsg({ ok: false, text: 'That current password is not correct.' })
-      return
-    }
-
-    const { error } = await supabase.auth.updateUser({ password: newPw })
-    setSavingPw(false)
-
-    if (error) {
-      setPwMsg({ ok: false, text: error.message })
-      return
-    }
-
-    setCurrentPw(''); setNewPw(''); setConfirmPw('')
-    setPwMsg({ ok: true, text: 'Password updated. Use it next time you sign in.' })
-  }
-
-  // ── Notifications ────────────────────────────────────────────
   async function togglePref(key) {
     if (!prefs || !user) return
     const next = !prefs[key]
-    setPrefs(p => ({ ...p, [key]: next })) // optimistic
-
+    setPrefs(p => ({ ...p, [key]: next }))
     const { error } = await supabase
       .from('notification_prefs')
       .upsert(
         { user_id: user.id, [key]: next, updated_at: new Date().toISOString() },
         { onConflict: 'user_id' }
       )
-
-    if (error) setPrefs(p => ({ ...p, [key]: !next })) // roll back
+    if (error) setPrefs(p => ({ ...p, [key]: !next }))
   }
 
   async function turnOnPush() {
@@ -294,288 +506,74 @@ export default function Settings() {
   }
 
   const pushOn = perm === 'granted'
-  const groupSummary = (rows) => {
+  const groupSummary = rows => {
     if (!prefs) return ''
     const on = rows.filter(r => prefs[r.key]).length
-    if (on === 0) return 'OFF'
-    return `${on} ON`
+    return on === 0 ? 'OFF' : `${on} ON`
   }
 
   return (
-    <div style={styles.page}>
-      <div style={styles.wrap}>
-
-        <div style={styles.pgTitle}>Settings</div>
-        <div style={styles.pgSub}>Manage your photo, password, and what you get notified about.</div>
-
-        {/* ══ PROFILE ══ */}
-        <div style={styles.card}>
-          <div style={styles.cHead}>
-            <div style={styles.cKicker}>Profile</div>
-            <div style={styles.cTitle}>Your photo and name</div>
+    <div style={styles.card}>
+      <div style={styles.master}>
+        <div style={styles.masterIcon}>
+          <i className="ti ti-device-mobile" aria-hidden="true" />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={styles.masterLabel}>Push notifications on this device</div>
+          <div style={styles.masterDesc}>
+            Alerts reach you even when Agentship is closed. Everything below only applies
+            while this is on.
           </div>
-          <div style={styles.cBody}>
-
-            <div style={styles.photoRow}>
-              <div style={styles.photoWrap}>
-                {profile?.avatar_url ? (
-                  <img src={profile.avatar_url} alt="Your headshot" style={styles.photoImg} />
-                ) : (
-                  <div style={styles.photoInitials}>{initials}</div>
-                )}
-                <div style={styles.photoBadge}>
-                  <i className="ti ti-camera" aria-hidden="true" />
-                </div>
-              </div>
-
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={styles.photoName}>
-                  {profile ? `${profile.first_name ?? ''} ${profile.last_name ?? ''}` : 'Agent'}
-                </div>
-                <div style={styles.photoRole}>{displayTitle}</div>
-
-                <div style={styles.photoActions}>
-                  <input
-                    ref={fileRef}
-                    id="headshot-input"
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    onChange={handleFile}
-                    style={{ display: 'none' }}
-                  />
-                  <label
-                    htmlFor="headshot-input"
-                    style={{
-                      ...styles.btnGold,
-                      display: 'inline-block',
-                      opacity: uploading ? 0.55 : 1,
-                      cursor: uploading ? 'not-allowed' : 'pointer',
-                      pointerEvents: uploading ? 'none' : 'auto',
-                    }}
-                  >
-                    {uploading ? 'Working...' : profile?.avatar_url ? 'Change Photo' : 'Upload Photo'}
-                  </label>
-
-                  {profile?.avatar_url && !uploading && (
-                    <button onClick={removePhoto} style={styles.btnOutline}>Remove</button>
-                  )}
-                </div>
-
-                <div style={styles.hint}>
-                  JPG or PNG · Max 5MB · A square headshot works best. Your photo shows next to
-                  your name in the sidebar, in channels and messages, and in the directory.
-                </div>
-
-                {photoMsg && <Banner ok={photoMsg.ok} text={photoMsg.text} />}
-              </div>
-            </div>
-
-            <div style={styles.rule} />
-
-            <div style={styles.fRow}>
-              <Field label="First Name">
-                <input style={styles.input} value={firstName} onChange={e => setFirstName(e.target.value)} />
-              </Field>
-              <Field label="Last Name">
-                <input style={styles.input} value={lastName} onChange={e => setLastName(e.target.value)} />
-              </Field>
-            </div>
-
-            <Field label="Mobile Phone" note="Shown in the directory so the team can reach you.">
-              <input
-                style={styles.input}
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
-                placeholder="(770) 555-0142"
-              />
-            </Field>
-
-            <Field label="Title" locked note="Set by Agentship. Reach out if this needs to change.">
-              <input style={{ ...styles.input, ...styles.inputLocked }} value={displayTitle} disabled />
-            </Field>
-
-            {profileMsg && <Banner ok={profileMsg.ok} text={profileMsg.text} />}
-
-            <div style={styles.save}>
-              <button
-                onClick={saveProfile}
-                disabled={savingProfile}
-                style={{ ...styles.btnGold, opacity: savingProfile ? 0.55 : 1 }}
-              >
-                {savingProfile ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          </div>
+          {pushMsg && <div style={styles.pushMsg}>{pushMsg}</div>}
         </div>
 
-        {/* ══ ACCOUNT ══ */}
-        <div style={styles.card}>
-          <div style={styles.cHead}>
-            <div style={styles.cKicker}>Account</div>
-            <div style={styles.cTitle}>Login and password</div>
-          </div>
-          <div style={styles.cBody}>
-
-            <Field label="Email Address" locked note="Your Agentship email is your login and can't be changed here.">
-              <input style={{ ...styles.input, ...styles.inputLocked }} value={user?.email ?? ''} disabled />
-            </Field>
-
-            <div style={styles.rule} />
-
-            <Field label="Current Password">
-              <input
-                style={styles.input}
-                type="password"
-                autoComplete="current-password"
-                value={currentPw}
-                onChange={e => setCurrentPw(e.target.value)}
-                placeholder="Enter your current password"
-              />
-            </Field>
-
-            <div style={styles.fRow}>
-              <Field label="New Password">
-                <input
-                  style={styles.input}
-                  type="password"
-                  autoComplete="new-password"
-                  value={newPw}
-                  onChange={e => setNewPw(e.target.value)}
-                />
-              </Field>
-              <Field label="Confirm New Password">
-                <input
-                  style={{
-                    ...styles.input,
-                    ...(confirmPw.length > 0 && confirmPw !== newPw
-                      ? { borderColor: 'rgba(224,112,112,0.5)' }
-                      : {}),
-                  }}
-                  type="password"
-                  autoComplete="new-password"
-                  value={confirmPw}
-                  onChange={e => setConfirmPw(e.target.value)}
-                />
-              </Field>
-            </div>
-
-            <PasswordChecklist password={newPw} />
-
-            {confirmPw.length > 0 && confirmPw !== newPw && (
-              <div style={styles.mismatch}>These two don't match yet</div>
-            )}
-
-            {pwMsg && <Banner ok={pwMsg.ok} text={pwMsg.text} />}
-
-            <div style={styles.save}>
-              <button
-                onClick={changePassword}
-                disabled={savingPw}
-                style={{ ...styles.btnGold, opacity: savingPw ? 0.55 : 1 }}
-              >
-                {savingPw ? 'Updating...' : 'Update Password'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* ══ NOTIFICATIONS ══ */}
-        <div style={styles.card}>
-          <div style={styles.cHead}>
-            <div style={styles.cKicker}>Notifications</div>
-            <div style={styles.cTitle}>Choose what reaches you</div>
-          </div>
-
-          {/* master device switch */}
-          <div style={styles.master}>
-            <div style={styles.masterIcon}>
-              <i className="ti ti-device-mobile" aria-hidden="true" />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={styles.masterLabel}>Push notifications on this device</div>
-              <div style={styles.masterDesc}>
-                Alerts reach you even when Agentship is closed. Everything below only applies
-                while this is on.
-              </div>
-              {pushMsg && <div style={styles.pushMsg}>{pushMsg}</div>}
-            </div>
-
-            {pushOn ? (
-              <span style={styles.pillOn}>
-                <i className="ti ti-check" aria-hidden="true" style={{ fontSize: '13px' }} /> On
-              </span>
-            ) : (
-              <button
-                onClick={turnOnPush}
-                disabled={pushBusy || !pushSupported() || perm === 'denied'}
-                style={{
-                  ...styles.btnGold,
-                  flexShrink: 0,
-                  opacity: pushBusy || !pushSupported() || perm === 'denied' ? 0.55 : 1,
-                }}
-              >
-                {perm === 'denied' ? 'Blocked in device settings' : pushBusy ? 'Setting up...' : 'Turn On'}
-              </button>
-            )}
-          </div>
-
-          {/* groups */}
-          {NOTIF_GROUPS.map((g, gi) => (
-            <div
-              key={g.id}
-              style={{
-                ...styles.group,
-                borderBottom: gi === NOTIF_GROUPS.length - 1 ? 'none' : '1px solid #1a1a1a',
-              }}
-            >
-              <div style={styles.groupHead}>
-                <i className={`ti ${g.icon}`} aria-hidden="true" style={styles.groupIcon} />
-                <span style={styles.groupName}>{g.label}</span>
-                <span style={styles.groupCount}>{groupSummary(g.rows)}</span>
-              </div>
-
-              <div style={styles.groupRows}>
-                {g.rows.map((r, ri) => (
-                  <div
-                    key={r.key}
-                    style={{ ...styles.row, borderTop: ri === 0 ? 'none' : '1px solid #181818' }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={styles.rowLabel}>{r.label}</div>
-                      <div style={styles.rowDesc}>{r.desc}</div>
-                    </div>
-                    <Toggle
-                      on={!!prefs?.[r.key]}
-                      dim={!pushOn}
-                      onClick={() => togglePref(r.key)}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* ══ SIGN OUT ══ */}
-        <div style={styles.signOutCard}>
-          <div>
-            <div style={styles.soLabel}>Sign out</div>
-            <div style={styles.soDesc}>
-              You'll need your Agentship email and password to sign back in.
-            </div>
-          </div>
-          <button onClick={signOut} style={styles.btnDanger}>
-            <i className="ti ti-logout" aria-hidden="true" style={{ fontSize: '16px' }} />
-            Sign Out
+        {pushOn ? (
+          <span style={styles.pillOn}>
+            <i className="ti ti-check" aria-hidden="true" style={{ fontSize: '13px' }} /> On
+          </span>
+        ) : (
+          <button
+            onClick={turnOnPush}
+            disabled={pushBusy || !pushSupported() || perm === 'denied'}
+            style={{
+              ...styles.btnGold,
+              flexShrink: 0,
+              opacity: pushBusy || !pushSupported() || perm === 'denied' ? 0.55 : 1,
+            }}
+          >
+            {perm === 'denied' ? 'Blocked in device settings' : pushBusy ? 'Setting up...' : 'Turn On'}
           </button>
-        </div>
-
+        )}
       </div>
+
+      {NOTIF_GROUPS.map((g, gi) => (
+        <div
+          key={g.id}
+          style={{ borderBottom: gi === NOTIF_GROUPS.length - 1 ? 'none' : '1px solid #1a1a1a' }}
+        >
+          <div style={styles.groupHead}>
+            <i className={`ti ${g.icon}`} aria-hidden="true" style={styles.groupIcon} />
+            <span style={styles.groupName}>{g.label}</span>
+            <span style={styles.groupCount}>{groupSummary(g.rows)}</span>
+          </div>
+          <div style={styles.groupRows}>
+            {g.rows.map((r, ri) => (
+              <div key={r.key} style={{ ...styles.row, borderTop: ri === 0 ? 'none' : '1px solid #181818' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={styles.rowLabel}>{r.label}</div>
+                  <div style={styles.rowDesc}>{r.desc}</div>
+                </div>
+                <Toggle on={!!prefs?.[r.key]} dim={!pushOn} onClick={() => togglePref(r.key)} />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
 
-/* ── small pieces ───────────────────────────────────────────── */
+/* ══════════════════ small pieces ══════════════════ */
 
 function Field({ label, children, note, locked }) {
   return (
@@ -592,9 +590,6 @@ function Field({ label, children, note, locked }) {
   )
 }
 
-// Live requirement list, shown before typing so nobody has to guess. Each line
-// turns gold as it's met. Rules live in lib/passwordRules.js so this and the
-// reset page can never disagree.
 function PasswordChecklist({ password }) {
   return (
     <div style={styles.checklist}>
@@ -620,11 +615,7 @@ function Toggle({ on, onClick, dim }) {
     <button
       onClick={onClick}
       aria-pressed={on}
-      style={{
-        ...styles.toggle,
-        background: on ? GOLD : '#262626',
-        opacity: dim ? 0.45 : 1,
-      }}
+      style={{ ...styles.toggle, background: on ? GOLD : '#262626', opacity: dim ? 0.45 : 1 }}
     >
       <span
         style={{
@@ -657,21 +648,26 @@ function Banner({ ok, text }) {
   )
 }
 
-/* ── styles ─────────────────────────────────────────────────── */
+/* ══════════════════ styles ══════════════════ */
 
 const styles = {
   page: { padding: '34px 44px 60px', overflowY: 'auto' },
-  wrap: { maxWidth: '660px' },
+  wrap: { maxWidth: '640px' },
 
   pgTitle: { fontSize: '22px', fontWeight: '800', color: '#fff', fontFamily: 'Montserrat, sans-serif' },
   pgSub: { fontSize: '13px', color: '#555', marginTop: '4px' },
 
+  tabs: { display: 'flex', gap: '4px', margin: '22px 0 0', borderBottom: '1px solid #202020' },
+  tab: {
+    padding: '10px 16px', fontSize: '12.5px', fontWeight: '600', color: '#6a6a6a',
+    border: 'none', background: 'none', fontFamily: 'Montserrat, sans-serif',
+    cursor: 'pointer', borderBottom: '2px solid transparent', marginBottom: '-1px',
+  },
+  tabOn: { color: GOLD, borderBottomColor: GOLD },
+
   card: {
-    background: '#111',
-    border: '1px solid #222',
-    borderRadius: '14px',
-    marginTop: '24px',
-    overflow: 'hidden',
+    background: '#111', border: '1px solid #222', borderRadius: '14px',
+    marginTop: '22px', overflow: 'hidden',
   },
   cHead: { padding: '17px 24px 14px', borderBottom: '1px solid #1e1e1e' },
   cKicker: {
@@ -705,7 +701,6 @@ const styles = {
   photoActions: { display: 'flex', gap: '9px', marginTop: '12px', alignItems: 'center' },
 
   hint: { fontSize: '11px', color: '#454545', marginTop: '9px', lineHeight: 1.55 },
-
   rule: { height: '1px', background: '#1e1e1e' },
 
   field: { display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, minWidth: 0 },
@@ -726,6 +721,18 @@ const styles = {
   },
   inputLocked: { background: '#0a0a0a', color: '#5a5a5a', borderColor: '#1c1c1c', cursor: 'not-allowed' },
 
+  signInAs: {
+    display: 'flex', alignItems: 'center', gap: '13px',
+    padding: '15px 16px', background: '#0d0d0d',
+    border: '1px solid #1e1e1e', borderRadius: '10px',
+  },
+  signInLabel: {
+    fontSize: '10px', fontWeight: '700', color: '#555',
+    textTransform: 'uppercase', letterSpacing: '0.09em',
+  },
+  signInValue: { fontSize: '13.5px', fontWeight: '600', color: '#e8e8e8', marginTop: '3px' },
+  signInNote: { fontSize: '11px', color: '#484848', lineHeight: 1.5, marginTop: '-6px' },
+
   save: { display: 'flex', justifyContent: 'flex-end' },
 
   btnGold: {
@@ -737,12 +744,6 @@ const styles = {
     padding: '9px 17px', borderRadius: '8px', background: 'transparent',
     color: '#666', border: '1px solid #2a2a2a', fontSize: '12px',
     fontWeight: '600', fontFamily: 'Montserrat, sans-serif', cursor: 'pointer',
-  },
-  btnDanger: {
-    padding: '10px 20px', background: 'transparent', color: '#e07070',
-    border: '1px solid rgba(224,112,112,0.3)', borderRadius: '8px',
-    fontSize: '13px', fontWeight: '700', fontFamily: 'Montserrat, sans-serif',
-    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0,
   },
 
   master: {
@@ -766,7 +767,6 @@ const styles = {
     color: '#6ec46e', fontSize: '11px', fontWeight: '700', flexShrink: 0,
   },
 
-  group: {},
   groupHead: { display: 'flex', alignItems: 'center', gap: '11px', padding: '16px 24px 8px' },
   groupIcon: { fontSize: '17px', color: GOLD },
   groupName: { fontSize: '13px', fontWeight: '700', color: '#fff' },
@@ -782,27 +782,11 @@ const styles = {
   toggle: {
     width: '42px', height: '24px', borderRadius: '12px',
     display: 'flex', alignItems: 'center', padding: '3px',
-    cursor: 'pointer', flexShrink: 0, border: 'none',
-    transition: 'background 0.18s',
+    cursor: 'pointer', flexShrink: 0, border: 'none', transition: 'background 0.18s',
   },
   knob: {
     width: '18px', height: '18px', borderRadius: '50%',
     transition: 'transform 0.18s', display: 'block',
-  },
-
-  signOutCard: {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    gap: '20px', background: '#111', border: '1px solid #2a2a2a',
-    borderRadius: '14px', padding: '18px 24px', marginTop: '24px',
-    maxWidth: '660px',
-  },
-  soLabel: { fontSize: '14px', fontWeight: '700', color: '#fff' },
-  soDesc: { fontSize: '11.5px', color: '#555', marginTop: '3px' },
-
-  banner: {
-    marginTop: '12px', padding: '10px 14px', borderRadius: '8px',
-    fontSize: '12.5px', display: 'flex', alignItems: 'center',
-    gap: '8px', lineHeight: 1.45, fontFamily: 'Montserrat, sans-serif',
   },
 
   checklist: {
@@ -824,5 +808,11 @@ const styles = {
   mismatch: {
     fontSize: '11.5px', color: '#e07070',
     fontFamily: 'Montserrat, sans-serif', marginTop: '-8px',
+  },
+
+  banner: {
+    marginTop: '12px', padding: '10px 14px', borderRadius: '8px',
+    fontSize: '12.5px', display: 'flex', alignItems: 'center',
+    gap: '8px', lineHeight: 1.45, fontFamily: 'Montserrat, sans-serif',
   },
 }
