@@ -13,7 +13,6 @@ import Settings from '../components/Settings'
 
 const VIEWS = {
   leaderboard: <Leaderboard />,
-  settings: <Settings />,
   command: <ComingSoon title="Command Center" icon="ti-layout-dashboard" description="Your leads, calling queue, and pipeline. This is where you win the day." phase="Phase 2" />,
   atlas: <ComingSoon title="Atlas" icon="ti-robot" description="Your AI teammate. Update leads, log notes, and move deals forward — here or by text from the field." phase="Phase 2" />,
   goal: <ComingSoon title="Goal Tracker" icon="ti-chart-bar" description="Your goals vs actual activity. See where you're on track and where to push." phase="Phase 2" />,
@@ -36,6 +35,15 @@ const VIEWS = {
   'res-audible': <ComingSoon title="Audible" icon="ti-headphones" description="External link. Built out in Phase 3." phase="Phase 3" />,
   'res-winday': <ComingSoon title="Win the Day Sheets" icon="ti-sun" description="Opens as a PDF. Built out in Phase 3." phase="Phase 3" />,
   'res-scripts': <ComingSoon title="Scripts" icon="ti-file-text" description="Opens as a Google Doc. Built out in Phase 3." phase="Phase 3" />,
+}
+
+// Each account-menu item is its own view id, so the browser-agnostic
+// activeView string still says exactly where you are.
+const SETTINGS_SECTIONS = {
+  'settings-profile': 'profile',
+  'settings-account': 'account',
+  'settings-notifications': 'notifications',
+  settings: 'profile', // safety net for any older link
 }
 
 export default function Dashboard() {
@@ -115,9 +123,18 @@ export default function Dashboard() {
             setActiveView={setActiveView}
           />
           <main style={styles.main}>
-            {activeView === 'messages'
-              ? <Messages onUnreadChange={setDmUnread} />
-              : (VIEWS[activeView] ?? <Leaderboard />)}
+            {activeView === 'messages' ? (
+              <Messages onUnreadChange={setDmUnread} />
+            ) : SETTINGS_SECTIONS[activeView] ? (
+              // The account menu points straight at a section, so Settings
+              // opens on the right tab instead of always landing on Profile.
+              <Settings
+                section={SETTINGS_SECTIONS[activeView]}
+                onSectionChange={setActiveView}
+              />
+            ) : (
+              VIEWS[activeView] ?? <Leaderboard />
+            )}
           </main>
         </div>
       </div>
