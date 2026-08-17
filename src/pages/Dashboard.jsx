@@ -10,9 +10,11 @@ import TrainingDetail from '../components/TrainingDetail'
 import Channels from '../components/Channels'
 import Messages from '../components/Messages'
 import Settings from '../components/Settings'
+import Directory from '../components/Directory'
 
 const VIEWS = {
   leaderboard: <Leaderboard />,
+  directory: <Directory />,
   command: <ComingSoon title="Command Center" icon="ti-layout-dashboard" description="Your leads, calling queue, and pipeline. This is where you win the day." phase="Phase 2" />,
   atlas: <ComingSoon title="Atlas" icon="ti-robot" description="Your AI teammate. Update leads, log notes, and move deals forward — here or by text from the field." phase="Phase 2" />,
   goal: <ComingSoon title="Goal Tracker" icon="ti-chart-bar" description="Your goals vs actual activity. See where you're on track and where to push." phase="Phase 2" />,
