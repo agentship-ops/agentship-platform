@@ -61,7 +61,7 @@ export default function Settings({ section = 'profile', onSectionChange }) {
           {active === 'profile' ? 'Profile' : active === 'account' ? 'Account' : 'Notifications'}
         </div>
         <div style={styles.pgSub}>
-          {active === 'profile' && 'Your photo, name, and phone number.'}
+          {active === 'profile' && 'Your photo, name, phone, and location.'}
           {active === 'account' && 'How you sign in.'}
           {active === 'notifications' && 'Choose what reaches you.'}
         </div>
@@ -97,6 +97,8 @@ function ProfileSection({ user, profile, updateProfile }) {
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [phone, setPhone] = useState('')
+  const [cityVal, setCityVal] = useState('')
+  const [stateVal, setStateVal] = useState('')
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState(null)
 
@@ -110,6 +112,8 @@ function ProfileSection({ user, profile, updateProfile }) {
     setFirstName(profile.first_name ?? '')
     setLastName(profile.last_name ?? '')
     setPhone(profile.phone ?? '')
+    setCityVal(profile.city ?? '')
+    setStateVal(profile.state ?? '')
   }, [profile])
 
   const initials =
@@ -206,6 +210,8 @@ function ProfileSection({ user, profile, updateProfile }) {
       first_name: firstName.trim(),
       last_name: lastName.trim(),
       phone: phone.trim() || null,
+      city: cityVal.trim() || null,
+      state: stateVal.trim() || null,
     })
     setSaving(false)
     setMsg(error ? { ok: false, text: error.message } : { ok: true, text: 'Saved.' })
@@ -295,6 +301,15 @@ function ProfileSection({ user, profile, updateProfile }) {
               placeholder="(770) 555-0142"
             />
           </Field>
+
+          <div style={styles.fRow}>
+            <Field label="City" note="Shown in the directory.">
+              <input style={styles.input} value={cityVal} onChange={e => setCityVal(e.target.value)} placeholder="Jefferson" />
+            </Field>
+            <Field label="State">
+              <input style={styles.input} value={stateVal} onChange={e => setStateVal(e.target.value)} placeholder="GA" />
+            </Field>
+          </div>
 
           <Field label="Title" locked note="Set by Agentship. Reach out if this needs to change.">
             <input style={{ ...styles.input, ...styles.inputLocked }} value={displayTitle} disabled />

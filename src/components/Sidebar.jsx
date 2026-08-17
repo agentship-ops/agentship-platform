@@ -80,6 +80,16 @@ const NAV = [
       { id: 'res-scripts', label: 'Scripts', icon: 'ti-file-text' },
     ],
   },
+  {
+    type: 'divider',
+    id: 'div-directory',
+  },
+  {
+    type: 'standalone',
+    id: 'directory',
+    label: 'Directory',
+    icon: 'ti-address-book',
+  },
 ]
 
 export default function Sidebar({ open, activeView, setActiveView }) {
@@ -135,6 +145,10 @@ export default function Sidebar({ open, activeView, setActiveView }) {
     }}>
       <nav style={styles.nav}>
         {NAV.map(node => {
+          if (node.type === 'divider') {
+            return <div key={node.id} style={styles.divider} />
+          }
+
           if (node.type === 'standalone') {
             const active = activeView === node.id
             return (
@@ -300,6 +314,11 @@ const styles = {
   },
   navItemActive: {
     background: '#1E1E1E',
+  },
+  divider: {
+    height: '1px',
+    background: '#2a2a2a',
+    margin: '10px 10px 8px',
   },
   badge: {
     background: '#C9A84C',
