@@ -197,6 +197,10 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0, acti
       if (onNavigate) onNavigate('messages')
       return
     }
+    if (n.type === 'event_new' || n.type === 'event_change') {
+      if (onNavigate) onNavigate('events')
+      return
+    }
     const view = CHANNEL_TO_VIEW[n.channel] || 'ch-agentship'
     if (onNavigate) onNavigate(view)
   }
@@ -259,10 +263,16 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0, acti
                           ? <> messaged you</>
                           : n.type === 'dm_reaction'
                           ? <> reacted <span>{n.preview}</span></>
+                          : n.type === 'event_new'
+                          ? <> posted an event <span>{n.preview}</span></>
+                          : n.type === 'event_change'
+                          ? <> updated an event <span>{n.preview}</span></>
                           : <> replied to you</>}
                       </span>
                       <span style={styles.notifSub}>
-                        {isDmNotif(n) ? 'Direct message' : (CHANNEL_LABEL[n.channel] || '# Agentship')} · {timeAgo(n.created_at)}
+                        {(n.type === 'event_new' || n.type === 'event_change')
+                          ? 'Events'
+                          : isDmNotif(n) ? 'Direct message' : (CHANNEL_LABEL[n.channel] || '# Agentship')} · {timeAgo(n.created_at)}
                       </span>
                     </button>
                   ))}
