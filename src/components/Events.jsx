@@ -466,7 +466,7 @@ function EventForm({ event, userId, onClose, onSaved }) {
 // ---- styles -------------------------------------------------------------
 
 const styles = {
-  page: { padding: '28px 32px', maxWidth: '900px', display: 'flex', flexDirection: 'column', gap: '18px' },
+  page: { padding: '28px 32px', maxWidth: '1080px', display: 'flex', flexDirection: 'column', gap: '18px' },
   header: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' },
   title: { fontSize: '22px', fontWeight: '700', color: '#FFFFFF', letterSpacing: '-0.3px' },
   subtitle: { fontSize: '11px', color: '#555', marginTop: '3px' },
@@ -485,14 +485,14 @@ const styles = {
     fontFamily: 'Montserrat, sans-serif',
   },
   calMonth: { fontSize: '14px', fontWeight: '700', color: '#fff' },
-  calGrid: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' },
-  calWeekday: { textAlign: 'center', fontSize: '9px', color: '#555', letterSpacing: '0.6px', paddingBottom: '4px' },
+  calGrid: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' },
+  calWeekday: { textAlign: 'center', fontSize: '10px', color: '#555', letterSpacing: '0.6px', paddingBottom: '4px' },
   calDay: {
-    aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px',
+    aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px',
     borderRadius: '7px', border: 'none', background: 'transparent', cursor: 'pointer', position: 'relative',
     fontFamily: 'Montserrat, sans-serif',
   },
-  calDot: { position: 'absolute', bottom: '5px', width: '4px', height: '4px', borderRadius: '50%', background: GOLD },
+  calDot: { position: 'absolute', bottom: '5px', width: '5px', height: '5px', borderRadius: '50%', background: GOLD },
   clearDay: {
     marginTop: '12px', display: 'flex', alignItems: 'center', gap: '5px', background: 'transparent',
     border: 'none', color: '#888', fontSize: '11px', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif',
