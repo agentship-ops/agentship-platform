@@ -11,6 +11,7 @@ import Channels from '../components/Channels'
 import Messages from '../components/Messages'
 import Settings from '../components/Settings'
 import Directory from '../components/Directory'
+import Events from '../components/Events'
 
 const VIEWS = {
   leaderboard: <Leaderboard />,
@@ -21,7 +22,7 @@ const VIEWS = {
   pl: <ComingSoon title="P&L" icon="ti-cash" description="Your income, expenses, and what you're actually keeping." phase="Phase 2" />,
   welcome: <ComingSoon title="Welcome" icon="ti-user-plus" description="Welcome new agents and make posts for the team to see." phase="Phase 2" />,
   updates: <ComingSoon title="Updates" icon="ti-speakerphone" description="Leader announcements and team updates — post-based space." phase="Phase 2" />,
-  events: <ComingSoon title="Events" icon="ti-calendar" description="Calendar view. Leaders create events, agents see and RSVP." phase="Phase 2" />,
+  events: <Events />,
   bullpen: <ComingSoon title="Bullpen" icon="ti-speakerphone" description="Leader announcements and team updates — post-based space." phase="Phase 2" />,
   celebrate: <ComingSoon title="Celebrate" icon="ti-confetti" description="Post wins, milestones, and shoutouts. Anyone on the team can post." phase="Phase 2" />,
   referrals: <ComingSoon title="Referrals" icon="ti-arrows-right-left" description="Post and claim referral opportunities — post-based space." phase="Phase 2" />,
