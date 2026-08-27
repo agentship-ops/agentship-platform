@@ -197,7 +197,7 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0, acti
       if (onNavigate) onNavigate('messages')
       return
     }
-    if (n.type === 'event_new' || n.type === 'event_change') {
+    if (n.type === 'event_new' || n.type === 'event_change' || n.type === 'event_soon') {
       if (onNavigate) onNavigate('events')
       return
     }
@@ -254,8 +254,10 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0, acti
                   {notifications.map(n => (
                     <button key={n.id} style={styles.notifItem} onClick={() => openNotification(n)}>
                       <span style={styles.notifLine}>
-                        <strong style={{ color: '#fff', fontWeight: 600 }}>{actorName(n)}</strong>
-                        {n.type === 'reaction'
+                        {n.type !== 'event_soon' && <strong style={{ color: '#fff', fontWeight: 600 }}>{actorName(n)}</strong>}
+                        {n.type === 'event_soon'
+                          ? <><strong style={{ color: '#fff', fontWeight: 600 }}>Starting soon</strong> <span>{n.preview}</span></>
+                          : n.type === 'reaction'
                           ? <> reacted <span>{n.preview}</span></>
                           : n.type === 'mention'
                           ? <> mentioned you</>
@@ -270,7 +272,7 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0, acti
                           : <> replied to you</>}
                       </span>
                       <span style={styles.notifSub}>
-                        {(n.type === 'event_new' || n.type === 'event_change')
+                        {(n.type === 'event_new' || n.type === 'event_change' || n.type === 'event_soon')
                           ? 'Events'
                           : isDmNotif(n) ? 'Direct message' : (CHANNEL_LABEL[n.channel] || '# Agentship')} · {timeAgo(n.created_at)}
                       </span>
