@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 
@@ -27,25 +27,53 @@ function timeLabel(d) {
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 }
 
-// A Date -> the value a <input type="datetime-local"> expects (local time).
-function toLocalInput(d) {
-  const pad = n => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-// Build a Google Calendar "add event" link.
+// Build a Google Calendar "add event" link. All-day events use the
+// date-only format, where Google treats the end date as exclusive.
 function googleCalUrl(ev) {
-  const fmt = iso => new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+  const pad = n => String(n).padStart(2, '0')
+  let dates
+  if (ev.all_day) {
+    const s = new Date(ev.start_time)
+    const e = new Date(ev.end_time)
+    const day = d => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`
+    const endExclusive = new Date(e.getFullYear(), e.getMonth(), e.getDate() + 1)
+    dates = `${day(s)}/${day(endExclusive)}`
+  } else {
+    const fmt = iso => new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+    dates = `${fmt(ev.start_time)}/${fmt(ev.end_time)}`
+  }
   const params = new URLSearchParams({
     action: 'TEMPLATE',
     text: ev.title || 'Agentship event',
-    dates: `${fmt(ev.start_time)}/${fmt(ev.end_time)}`,
+    dates,
     details: ev.description || '',
     location: ev.location_type === 'virtual'
       ? (ev.meeting_link || 'Virtual')
       : (ev.location_address || ''),
   })
   return `https://calendar.google.com/calendar/render?${params.toString()}`
+}
+
+// Time choices for the picker, every 15 minutes, labelled in local format.
+const TIME_OPTIONS = (() => {
+  const arr = []
+  for (let h = 0; h < 24; h++) {
+    for (const m of [0, 15, 30, 45]) {
+      const d = new Date(2000, 0, 1, h, m)
+      arr.push({ value: h * 60 + m, label: d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) })
+    }
+  }
+  return arr
+})()
+
+// Step a date forward by one repeat interval, i times.
+function addInterval(date, freq, i) {
+  const d = new Date(date)
+  if (freq === 'daily') d.setDate(d.getDate() + i)
+  else if (freq === 'weekly') d.setDate(d.getDate() + 7 * i)
+  else if (freq === 'biweekly') d.setDate(d.getDate() + 14 * i)
+  else if (freq === 'monthly') d.setMonth(d.getMonth() + i)
+  return d
 }
 
 // Build the 6-week grid of days shown for a given month.
@@ -147,8 +175,18 @@ export default function Events() {
   }
 
   async function deleteEvent(ev) {
-    if (!window.confirm(`Delete "${ev.title}"? This can't be undone.`)) return
-    await supabase.from('events').delete().eq('id', ev.id)
+    if (!window.confirm(`Delete "${ev.title}"?`)) return
+    if (ev.series_id) {
+      // OK = whole series, Cancel = just this occurrence (they already
+      // confirmed the delete itself in the first prompt).
+      const whole = window.confirm(
+        'This event repeats.\n\nOK = delete the whole series.\nCancel = delete only this one.'
+      )
+      if (whole) await supabase.from('events').delete().eq('series_id', ev.series_id)
+      else await supabase.from('events').delete().eq('id', ev.id)
+    } else {
+      await supabase.from('events').delete().eq('id', ev.id)
+    }
     load()
   }
 
@@ -283,15 +321,22 @@ function EventCard({ ev, now, going, mine, canManage, onRsvp, onEdit, onDelete }
     <div style={{ ...styles.eventCard, borderColor: amGoing ? GOLD : '#2a2a2a' }}>
       <div style={styles.eventTop}>
         <div style={styles.eventTitle}>{ev.title}</div>
-        <span style={{ ...styles.badge, ...(isVirtual ? styles.badgeVirtual : styles.badgeInPerson) }}>
-          <i className={`ti ${isVirtual ? 'ti-video' : 'ti-map-pin'}`} aria-hidden="true" style={{ fontSize: '10px' }} />
-          {' '}{isVirtual ? 'Virtual' : 'In person'}
-        </span>
+        <div style={styles.badgeGroup}>
+          {ev.series_id && (
+            <span style={styles.repeatChip}>
+              <i className="ti ti-repeat" aria-hidden="true" style={{ fontSize: '10px' }} /> Repeats
+            </span>
+          )}
+          <span style={{ ...styles.badge, ...(isVirtual ? styles.badgeVirtual : styles.badgeInPerson) }}>
+            <i className={`ti ${isVirtual ? 'ti-video' : 'ti-map-pin'}`} aria-hidden="true" style={{ fontSize: '10px' }} />
+            {' '}{isVirtual ? 'Virtual' : 'In person'}
+          </span>
+        </div>
       </div>
 
       <div style={styles.eventMeta}>
         <i className="ti ti-clock" aria-hidden="true" style={{ fontSize: '12px' }} />
-        {' '}{dateLabel(start)} · {timeLabel(start)}
+        {' '}{dateLabel(start)}{ev.all_day ? ' · All day' : ` · ${timeLabel(start)}`}
       </div>
 
       {ev.description && <p style={styles.eventDesc}>{ev.description}</p>}
@@ -345,6 +390,95 @@ function EventCard({ ev, now, going, mine, canManage, onRsvp, onEdit, onDelete }
   )
 }
 
+// ---- date + time picker (branded popup) ---------------------------------
+
+function DateTimeField({ value, onChange, allDay }) {
+  const [open, setOpen] = useState(false)
+  const [view, setView] = useState(() => {
+    const base = value || new Date()
+    return { year: base.getFullYear(), month: base.getMonth() }
+  })
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+
+  const cells = monthCells(view.year, view.month)
+  const monthTitle = new Date(view.year, view.month, 1)
+    .toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+  const minutes = value ? value.getHours() * 60 + value.getMinutes() : 9 * 60
+
+  function pickDay(d) {
+    onChange(new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(minutes / 60), minutes % 60, 0, 0))
+  }
+  function pickTime(mins) {
+    const b = value || new Date()
+    onChange(new Date(b.getFullYear(), b.getMonth(), b.getDate(), Math.floor(mins / 60), mins % 60, 0, 0))
+  }
+
+  const display = value
+    ? (allDay
+        ? value.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+        : `${value.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · ${value.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`)
+    : 'Pick a date'
+
+  return (
+    <div style={{ position: 'relative' }} ref={ref}>
+      <button type="button" style={styles.pickerBtn} onClick={() => setOpen(o => !o)}>
+        <i className="ti ti-calendar" aria-hidden="true" style={{ fontSize: '14px', color: GOLD }} />
+        <span>{display}</span>
+      </button>
+
+      {open && (
+        <div style={styles.pickerPop}>
+          <div style={styles.calNav}>
+            <button type="button" style={styles.calArrow} aria-label="Previous month"
+              onClick={() => setView(v => v.month === 0 ? { year: v.year - 1, month: 11 } : { year: v.year, month: v.month - 1 })}>
+              <i className="ti ti-chevron-left" aria-hidden="true" />
+            </button>
+            <div style={styles.calMonth}>{monthTitle}</div>
+            <button type="button" style={styles.calArrow} aria-label="Next month"
+              onClick={() => setView(v => v.month === 11 ? { year: v.year + 1, month: 0 } : { year: v.year, month: v.month + 1 })}>
+              <i className="ti ti-chevron-right" aria-hidden="true" />
+            </button>
+          </div>
+
+          <div style={styles.calGrid}>
+            {WEEKDAYS.map(w => <div key={w} style={styles.calWeekday}>{w}</div>)}
+            {cells.map(({ date, inMonth }, i) => {
+              const selected = value && sameDay(date, value)
+              return (
+                <button type="button" key={i} onClick={() => pickDay(date)}
+                  style={{
+                    ...styles.calDay,
+                    fontSize: '13px',
+                    color: selected ? '#0A0A0A' : inMonth ? '#ccc' : '#3a3a3a',
+                    background: selected ? GOLD : 'transparent',
+                    fontWeight: selected ? 700 : 400,
+                  }}>
+                  {date.getDate()}
+                </button>
+              )
+            })}
+          </div>
+
+          {!allDay && (
+            <select style={styles.timeSelect} value={minutes} onChange={e => pickTime(Number(e.target.value))}>
+              {TIME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          )}
+
+          <button type="button" style={styles.pickerDone} onClick={() => setOpen(false)}>Done</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ---- create / edit modal ------------------------------------------------
 
 function EventForm({ event, userId, onClose, onSaved }) {
@@ -354,34 +488,77 @@ function EventForm({ event, userId, onClose, onSaved }) {
   const [locationType, setLocationType] = useState(event?.location_type || 'in_person')
   const [address, setAddress] = useState(event?.location_address || '')
   const [meetingLink, setMeetingLink] = useState(event?.meeting_link || '')
-  const [start, setStart] = useState(event ? toLocalInput(new Date(event.start_time)) : '')
-  const [end, setEnd] = useState(event ? toLocalInput(new Date(event.end_time)) : '')
+  const [start, setStart] = useState(event ? new Date(event.start_time) : null)
+  const [end, setEnd] = useState(event ? new Date(event.end_time) : null)
+  const [allDay, setAllDay] = useState(event?.all_day || false)
+  const [repeatFreq, setRepeatFreq] = useState('none')
+  const [endMode, setEndMode] = useState('count')
+  const [count, setCount] = useState(8)
+  const [until, setUntil] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
   async function save() {
     setError('')
     if (!title.trim()) return setError('Give the event a title.')
-    if (!start) return setError('Pick a start time.')
-    if (!end) return setError('Pick an end time.')
-    if (new Date(end) <= new Date(start)) return setError('The end time has to be after the start time.')
+    if (!start) return setError('Pick a start date.')
+    if (!end) return setError('Pick an end date.')
+
+    // For all-day, ignore the clock and span midnight to end-of-day.
+    let s = new Date(start)
+    let e = new Date(end)
+    if (allDay) {
+      s = new Date(s.getFullYear(), s.getMonth(), s.getDate(), 0, 0, 0, 0)
+      e = new Date(e.getFullYear(), e.getMonth(), e.getDate(), 23, 59, 0, 0)
+    }
+    if (e <= s) return setError('The end has to be after the start.')
 
     setSaving(true)
-    const payload = {
+    const base = {
       title: title.trim(),
       description: description.trim() || null,
       location_type: locationType,
       location_address: locationType === 'in_person' ? (address.trim() || null) : null,
       meeting_link: locationType === 'virtual' ? (meetingLink.trim() || null) : null,
-      start_time: new Date(start).toISOString(),
-      end_time: new Date(end).toISOString(),
+      all_day: allDay,
     }
 
     let dbError
     if (isEdit) {
-      ({ error: dbError } = await supabase.from('events').update(payload).eq('id', event.id))
+      ({ error: dbError } = await supabase.from('events')
+        .update({ ...base, start_time: s.toISOString(), end_time: e.toISOString() })
+        .eq('id', event.id))
+    } else if (repeatFreq === 'none') {
+      ({ error: dbError } = await supabase.from('events')
+        .insert({ ...base, start_time: s.toISOString(), end_time: e.toISOString(), created_by: userId }))
     } else {
-      ({ error: dbError } = await supabase.from('events').insert({ ...payload, created_by: userId }))
+      // Generate the concrete occurrences up front, all sharing one series id.
+      const duration = e.getTime() - s.getTime()
+      const starts = []
+      if (endMode === 'count') {
+        const n = Math.min(Math.max(parseInt(count, 10) || 2, 2), 52)
+        for (let i = 0; i < n; i++) starts.push(addInterval(s, repeatFreq, i))
+      } else {
+        if (!until) { setSaving(false); return setError('Pick a date for the series to end.') }
+        const untilDate = new Date(`${until}T23:59:59`)
+        for (let i = 0; i < 60; i++) {
+          const so = addInterval(s, repeatFreq, i)
+          if (so > untilDate) break
+          starts.push(so)
+        }
+        if (starts.length === 0) { setSaving(false); return setError('That end date is before the first event.') }
+      }
+      const seriesId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+      const rows = starts.map(so => ({
+        ...base,
+        series_id: seriesId,
+        start_time: so.toISOString(),
+        end_time: new Date(so.getTime() + duration).toISOString(),
+        created_by: userId,
+      }))
+      ;({ error: dbError } = await supabase.from('events').insert(rows))
     }
 
     setSaving(false)
@@ -439,16 +616,52 @@ function EventForm({ event, userId, onClose, onSaved }) {
           </div>
         )}
 
-        <div style={styles.twoCol}>
-          <div style={styles.field}>
-            <label style={styles.label}>Starts</label>
-            <input type="datetime-local" style={styles.input} value={start} onChange={e => setStart(e.target.value)} />
-          </div>
-          <div style={styles.field}>
-            <label style={styles.label}>Ends</label>
-            <input type="datetime-local" style={styles.input} value={end} onChange={e => setEnd(e.target.value)} />
-          </div>
+        <div style={styles.allDayRow}>
+          <label style={styles.label}>All day</label>
+          <button type="button" role="switch" aria-checked={allDay} aria-label="All day"
+            onClick={() => setAllDay(a => !a)}
+            style={{ ...styles.switch, ...(allDay ? styles.switchOn : {}) }}>
+            <span style={{ ...styles.switchKnob, ...(allDay ? styles.switchKnobOn : {}) }} />
+          </button>
         </div>
+
+        <div style={styles.field}>
+          <label style={styles.label}>Starts</label>
+          <DateTimeField value={start} onChange={setStart} allDay={allDay} />
+        </div>
+
+        <div style={styles.field}>
+          <label style={styles.label}>Ends</label>
+          <DateTimeField value={end} onChange={setEnd} allDay={allDay} />
+        </div>
+
+        {!isEdit && (
+          <div style={styles.field}>
+            <label style={styles.label}>Repeat</label>
+            <select style={styles.input} value={repeatFreq} onChange={e => setRepeatFreq(e.target.value)}>
+              <option value="none">Does not repeat</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="biweekly">Every 2 weeks</option>
+              <option value="monthly">Monthly</option>
+            </select>
+            {repeatFreq !== 'none' && (
+              <div style={styles.repeatEndRow}>
+                <select style={{ ...styles.input, width: 'auto', flex: '0 0 auto' }} value={endMode} onChange={e => setEndMode(e.target.value)}>
+                  <option value="count">Ends after</option>
+                  <option value="until">Ends on</option>
+                </select>
+                {endMode === 'count' ? (
+                  <span style={styles.repeatInline}>
+                    <input type="number" min="2" max="52" style={{ ...styles.input, width: '70px' }} value={count} onChange={e => setCount(e.target.value)} /> times
+                  </span>
+                ) : (
+                  <input type="date" style={styles.input} value={until} onChange={e => setUntil(e.target.value)} />
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {error && <p style={styles.errorBox}>{error}</p>}
 
@@ -505,6 +718,8 @@ const styles = {
   eventCard: { background: '#1E1E1E', border: '0.5px solid #2a2a2a', borderRadius: '12px', padding: '12px' },
   eventTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' },
   eventTitle: { fontSize: '13px', fontWeight: '700', color: '#fff', lineHeight: 1.3 },
+  badgeGroup: { display: 'flex', gap: '6px', flexShrink: 0 },
+  repeatChip: { fontSize: '9px', fontWeight: '700', padding: '2px 7px', borderRadius: '8px', color: '#aaa', background: '#2a2a2a', display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' },
   badge: { fontSize: '9px', fontWeight: '700', padding: '2px 7px', borderRadius: '8px', whiteSpace: 'nowrap' },
   badgeVirtual: { color: GOLD, background: 'rgba(201,168,76,0.12)' },
   badgeInPerson: { color: '#aaa', background: '#2a2a2a' },
@@ -572,4 +787,36 @@ const styles = {
     padding: '9px 16px', borderRadius: '8px', background: GOLD, border: 'none', color: '#0A0A0A',
     fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif',
   },
+
+  pickerBtn: {
+    width: '100%', display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px',
+    background: '#0A0A0A', border: '0.5px solid #333', borderRadius: '8px', color: '#fff',
+    fontSize: '13px', fontFamily: 'Montserrat, sans-serif', cursor: 'pointer', textAlign: 'left',
+  },
+  pickerPop: {
+    position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 60, width: '264px',
+    background: '#1E1E1E', border: '0.5px solid #333', borderRadius: '12px', padding: '12px',
+    boxShadow: '0 8px 28px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', gap: '10px',
+  },
+  timeSelect: {
+    width: '100%', padding: '8px 10px', background: '#0A0A0A', border: '0.5px solid #333',
+    borderRadius: '8px', color: '#fff', fontSize: '13px', fontFamily: 'Montserrat, sans-serif',
+  },
+  pickerDone: {
+    alignSelf: 'flex-end', padding: '6px 14px', borderRadius: '8px', background: GOLD, color: '#0A0A0A',
+    border: 'none', fontSize: '11px', fontWeight: '700', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif',
+  },
+  allDayRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  switch: {
+    width: '40px', height: '22px', borderRadius: '11px', background: '#333', border: 'none',
+    position: 'relative', cursor: 'pointer', padding: 0, flexShrink: 0,
+  },
+  switchOn: { background: GOLD },
+  switchKnob: {
+    position: 'absolute', top: '2px', left: '2px', width: '18px', height: '18px', borderRadius: '50%',
+    background: '#0A0A0A', transition: 'left 0.15s',
+  },
+  switchKnobOn: { left: '20px' },
+  repeatEndRow: { display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' },
+  repeatInline: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#aaa' },
 }
