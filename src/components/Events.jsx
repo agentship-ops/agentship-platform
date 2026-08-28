@@ -687,7 +687,11 @@ function EventForm({ event, userId, onClose, onSaved }) {
 // ---- day / week time grid ----------------------------------------------
 
 const HOUR_PX = 48
-const HOURS = Array.from({ length: 24 }, (_, h) => h)
+const START_HOUR = 6
+const END_HOUR = 22
+const HOURS = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => START_HOUR + i)
+const GRID_MIN = START_HOUR * 60
+const GRID_HEIGHT = (END_HOUR - START_HOUR) * HOUR_PX
 
 function fmtHour(h) {
   if (h === 0) return '12a'
@@ -723,11 +727,13 @@ function layoutDay(list) {
     })
     const cols = colEnds.length
     cluster.forEach(it => {
+      const topPx = Math.max(0, Math.min(GRID_HEIGHT, ((it.startMin - GRID_MIN) / 60) * HOUR_PX))
+      const botPx = Math.max(0, Math.min(GRID_HEIGHT, ((it.endMin - GRID_MIN) / 60) * HOUR_PX))
       result[it.ev.id] = {
         col: it.col,
         cols,
-        top: (it.startMin / 60) * HOUR_PX,
-        height: Math.max(20, ((it.endMin - it.startMin) / 60) * HOUR_PX),
+        top: topPx,
+        height: Math.max(20, botPx - topPx),
       }
     })
   }
@@ -743,7 +749,7 @@ function layoutDay(list) {
 function TimeGrid({ days, eventsByDay, now, onOpenDay, onOpenEvent }) {
   const scrollRef = useRef(null)
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 7 * HOUR_PX
+    if (scrollRef.current) scrollRef.current.scrollTop = 0
   }, [])
   const showHeaders = days.length > 1
   const hasAllDay = days.some(d => (eventsByDay[dayKey(d)] || []).some(e => e.all_day))
@@ -782,19 +788,16 @@ function TimeGrid({ days, eventsByDay, now, onOpenDay, onOpenEvent }) {
       )}
 
       <div ref={scrollRef} style={styles.tgScroll}>
-        <div style={{ display: 'flex', height: 24 * HOUR_PX, position: 'relative' }}>
+        <div style={{ display: 'flex', height: GRID_HEIGHT, position: 'relative' }}>
           <div style={styles.tgGutter}>
-            {HOURS.map(h => <div key={h} style={{ ...styles.tgHourLabel, top: h * HOUR_PX }}>{fmtHour(h)}</div>)}
+            {HOURS.map(h => <div key={h} style={{ ...styles.tgHourLabel, top: (h - START_HOUR) * HOUR_PX }}>{fmtHour(h)}</div>)}
           </div>
           {days.map((d, di) => {
             const timed = (eventsByDay[dayKey(d)] || []).filter(e => !e.all_day)
             const pos = layoutDay(timed)
-            const isToday = sameDay(d, now)
-            const nowTop = (minsOfDay(now) / 60) * HOUR_PX
             return (
               <div key={di} style={styles.tgCol}>
-                {HOURS.map(h => <div key={h} style={{ ...styles.tgHourLine, top: h * HOUR_PX }} />)}
-                {isToday && <div style={{ ...styles.tgNowLine, top: nowTop }} />}
+                {HOURS.map(h => <div key={h} style={{ ...styles.tgHourLine, top: (h - START_HOUR) * HOUR_PX }} />)}
                 {timed.map(ev => {
                   const p = pos[ev.id]
                   if (!p) return null
