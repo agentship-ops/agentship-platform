@@ -111,6 +111,7 @@ export default function Events() {
   const [anchor, setAnchor] = useState(() => new Date()) // focused date for the current view
   const [now, setNow] = useState(() => new Date())
   const [editing, setEditing] = useState(null)          // null | 'new' | eventObject
+  const [detail, setDetail] = useState(null)             // event shown in the detail popup
 
   // Re-tick every 30s so the "Join" button flips on without a refresh.
   useEffect(() => {
@@ -277,46 +278,9 @@ export default function Events() {
           </div>
         </div>
       ) : view === 'week' ? (
-        <div style={styles.weekWrap}>
-          {weekDays.map((d, i) => {
-            const list = eventsByDay[dayKey(d)] || []
-            const isToday = sameDay(d, now)
-            return (
-              <div key={i} style={styles.weekCol}>
-                <button onClick={() => openDay(d)} style={styles.weekHead}>
-                  <div style={styles.weekDow}>{WEEKDAYS[d.getDay()]}</div>
-                  <div style={{ ...styles.weekDate, color: isToday ? GOLD : '#ccc', fontWeight: isToday ? 700 : 500 }}>{d.getDate()}</div>
-                </button>
-                <div style={styles.weekBody}>
-                  {list.length === 0 ? <div style={styles.weekEmpty} /> : list.map(ev => (
-                    <button key={ev.id} onClick={() => openDay(d)} style={styles.weekChip}>
-                      <div style={styles.weekChipTime}>{ev.all_day ? 'All day' : shortTime(new Date(ev.start_time))}</div>
-                      <div style={styles.weekChipTitle}>{ev.title}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        <TimeGrid key="week" days={weekDays} eventsByDay={eventsByDay} now={now} onOpenDay={openDay} onOpenEvent={setDetail} />
       ) : (
-        <div style={styles.dayCol}>
-          {dayEvents.length === 0 ? (
-            <p style={styles.muted}>Nothing scheduled this day.{canManage ? ' Create one with New event.' : ''}</p>
-          ) : dayEvents.map(ev => (
-            <EventCard
-              key={ev.id}
-              ev={ev}
-              now={now}
-              going={goingCount[ev.id] || 0}
-              mine={myStatus[ev.id]}
-              canManage={canManage}
-              onRsvp={() => toggleRsvp(ev)}
-              onEdit={() => setEditing(ev)}
-              onDelete={() => deleteEvent(ev)}
-            />
-          ))}
-        </div>
+        <TimeGrid key="day" days={[new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate())]} eventsByDay={eventsByDay} now={now} onOpenDay={openDay} onOpenEvent={setDetail} />
       )}
 
       {editing && (
@@ -326,6 +290,23 @@ export default function Events() {
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); load() }}
         />
+      )}
+
+      {detail && (
+        <div style={styles.overlay} onClick={() => setDetail(null)}>
+          <div style={{ width: '100%', maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+            <EventCard
+              ev={detail}
+              now={now}
+              going={goingCount[detail.id] || 0}
+              mine={myStatus[detail.id]}
+              canManage={canManage}
+              onRsvp={() => toggleRsvp(detail)}
+              onEdit={() => { setDetail(null); setEditing(detail) }}
+              onDelete={async () => { await deleteEvent(detail); setDetail(null) }}
+            />
+          </div>
+        </div>
       )}
     </div>
   )
@@ -703,9 +684,158 @@ function EventForm({ event, userId, onClose, onSaved }) {
   )
 }
 
+// ---- day / week time grid ----------------------------------------------
+
+const HOUR_PX = 48
+const HOURS = Array.from({ length: 24 }, (_, h) => h)
+
+function fmtHour(h) {
+  if (h === 0) return '12a'
+  if (h === 12) return '12p'
+  return h < 12 ? `${h}a` : `${h - 12}p`
+}
+
+function minsOfDay(d) { return d.getHours() * 60 + d.getMinutes() }
+
+// Position a day's timed events, splitting overlaps into side-by-side columns.
+function layoutDay(list) {
+  const items = list.map(ev => {
+    const s = new Date(ev.start_time)
+    const e = new Date(ev.end_time)
+    const startMin = minsOfDay(s)
+    let endMin = sameDay(s, e) ? minsOfDay(e) : 1440
+    if (endMin <= startMin) endMin = Math.min(1440, startMin + 30)
+    return { ev, startMin, endMin }
+  })
+  items.sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin)
+  const result = {}
+  let cluster = []
+  let clusterEnd = -1
+  function flush() {
+    const colEnds = []
+    cluster.forEach(it => {
+      let placed = -1
+      for (let c = 0; c < colEnds.length; c++) {
+        if (colEnds[c] <= it.startMin) { colEnds[c] = it.endMin; placed = c; break }
+      }
+      if (placed < 0) { colEnds.push(it.endMin); placed = colEnds.length - 1 }
+      it.col = placed
+    })
+    const cols = colEnds.length
+    cluster.forEach(it => {
+      result[it.ev.id] = {
+        col: it.col,
+        cols,
+        top: (it.startMin / 60) * HOUR_PX,
+        height: Math.max(20, ((it.endMin - it.startMin) / 60) * HOUR_PX),
+      }
+    })
+  }
+  items.forEach(it => {
+    if (cluster.length && it.startMin >= clusterEnd) { flush(); cluster = []; clusterEnd = -1 }
+    cluster.push(it)
+    clusterEnd = Math.max(clusterEnd, it.endMin)
+  })
+  if (cluster.length) flush()
+  return result
+}
+
+function TimeGrid({ days, eventsByDay, now, onOpenDay, onOpenEvent }) {
+  const scrollRef = useRef(null)
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 7 * HOUR_PX
+  }, [])
+  const showHeaders = days.length > 1
+  const hasAllDay = days.some(d => (eventsByDay[dayKey(d)] || []).some(e => e.all_day))
+
+  return (
+    <div style={styles.tgCard}>
+      {showHeaders && (
+        <div style={styles.tgHeaderRow}>
+          <div style={styles.tgGutterHead} />
+          {days.map((d, i) => {
+            const isToday = sameDay(d, now)
+            return (
+              <button key={i} style={styles.tgHeadCell} onClick={() => onOpenDay(d)}>
+                <div style={styles.weekDow}>{WEEKDAYS[d.getDay()]}</div>
+                <div style={{ ...styles.weekDate, color: isToday ? GOLD : '#ccc', fontWeight: isToday ? 700 : 500 }}>{d.getDate()}</div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {hasAllDay && (
+        <div style={styles.tgAllDayRow}>
+          <div style={styles.tgAllDayLabel}>all-day</div>
+          {days.map((d, i) => {
+            const ad = (eventsByDay[dayKey(d)] || []).filter(e => e.all_day)
+            return (
+              <div key={i} style={styles.tgAllDayCol}>
+                {ad.map(ev => (
+                  <button key={ev.id} style={styles.tgAllDayChip} onClick={() => onOpenEvent(ev)}>{ev.title}</button>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <div ref={scrollRef} style={styles.tgScroll}>
+        <div style={{ display: 'flex', height: 24 * HOUR_PX, position: 'relative' }}>
+          <div style={styles.tgGutter}>
+            {HOURS.map(h => <div key={h} style={{ ...styles.tgHourLabel, top: h * HOUR_PX }}>{fmtHour(h)}</div>)}
+          </div>
+          {days.map((d, di) => {
+            const timed = (eventsByDay[dayKey(d)] || []).filter(e => !e.all_day)
+            const pos = layoutDay(timed)
+            const isToday = sameDay(d, now)
+            const nowTop = (minsOfDay(now) / 60) * HOUR_PX
+            return (
+              <div key={di} style={styles.tgCol}>
+                {HOURS.map(h => <div key={h} style={{ ...styles.tgHourLine, top: h * HOUR_PX }} />)}
+                {isToday && <div style={{ ...styles.tgNowLine, top: nowTop }} />}
+                {timed.map(ev => {
+                  const p = pos[ev.id]
+                  if (!p) return null
+                  const width = `calc(${100 / p.cols}% - 3px)`
+                  const left = `calc(${(100 / p.cols) * p.col}% + 1px)`
+                  return (
+                    <button key={ev.id} onClick={() => onOpenEvent(ev)} style={{ ...styles.tgBlock, top: p.top, height: p.height, left, width }}>
+                      <div style={styles.tgBlockTime}>{shortTime(new Date(ev.start_time))}</div>
+                      <div style={styles.tgBlockTitle}>{ev.title}</div>
+                    </button>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ---- styles -------------------------------------------------------------
 
 const styles = {
+  tgCard: { background: '#1E1E1E', border: '0.5px solid #2a2a2a', borderRadius: '12px', overflow: 'hidden' },
+  tgHeaderRow: { display: 'flex', borderBottom: '0.5px solid #2a2a2a' },
+  tgGutterHead: { width: '52px', flexShrink: 0 },
+  tgHeadCell: { flex: 1, background: 'transparent', border: 'none', borderLeft: '0.5px solid #232323', padding: '8px 4px', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif' },
+  tgAllDayRow: { display: 'flex', borderBottom: '0.5px solid #2a2a2a', minHeight: '30px' },
+  tgAllDayLabel: { width: '52px', flexShrink: 0, fontSize: '9px', color: '#555', textAlign: 'right', paddingRight: '6px', paddingTop: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' },
+  tgAllDayCol: { flex: 1, borderLeft: '0.5px solid #232323', padding: '4px', display: 'flex', flexDirection: 'column', gap: '3px' },
+  tgAllDayChip: { textAlign: 'left', background: 'rgba(201,168,76,0.14)', borderLeft: `2px solid ${GOLD}`, borderTop: 'none', borderRight: 'none', borderBottom: 'none', borderRadius: '3px', padding: '3px 6px', fontSize: '10px', color: '#e7d9a8', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'Montserrat, sans-serif' },
+  tgScroll: { maxHeight: '560px', overflowY: 'auto' },
+  tgGutter: { width: '52px', flexShrink: 0, position: 'relative' },
+  tgHourLabel: { position: 'absolute', right: '6px', fontSize: '10px', color: '#555', transform: 'translateY(-50%)' },
+  tgCol: { flex: 1, position: 'relative', borderLeft: '0.5px solid #232323' },
+  tgHourLine: { position: 'absolute', left: 0, right: 0, borderTop: '0.5px solid #202020' },
+  tgNowLine: { position: 'absolute', left: 0, right: 0, height: '2px', background: GOLD, zIndex: 5 },
+  tgBlock: { position: 'absolute', background: 'rgba(201,168,76,0.16)', borderLeft: `2px solid ${GOLD}`, borderTop: 'none', borderRight: 'none', borderBottom: 'none', borderRadius: '4px', padding: '3px 6px', textAlign: 'left', cursor: 'pointer', overflow: 'hidden', zIndex: 2, fontFamily: 'Montserrat, sans-serif' },
+  tgBlockTime: { fontSize: '9px', color: GOLD, fontWeight: '700' },
+  tgBlockTitle: { fontSize: '11px', color: '#e7d9a8', lineHeight: 1.2, overflow: 'hidden' },
   controls: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' },
   controlsLeft: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' },
   todayBtn: { padding: '7px 14px', borderRadius: '8px', background: 'transparent', border: `0.5px solid ${GOLD}`, color: GOLD, fontSize: '12px', fontWeight: '500', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif' },
