@@ -28,7 +28,7 @@ function eventReminderHtml(d) {
             <div style="height:1px;background:#C9A84C;margin:26px 0 28px;font-size:0;line-height:0;">&nbsp;</div>
             <div style="font-size:24px;color:#ffffff;font-weight:700;">${title}</div>
             <div style="font-size:14px;color:#b0b0b0;line-height:1.7;margin-top:12px;">
-              This event is starting in about <span style="color:#C9A84C;font-weight:600;">15 minutes</span>. Here are the details.
+              This event is starting in <span style="color:#C9A84C;font-weight:600;">${esc(d.leadPhrase || 'a few minutes')}</span>. Here are the details.
             </div>
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:22px;border:1px solid #2a2a2a;border-radius:10px;">
               <tr><td style="padding:18px 20px;">
@@ -52,7 +52,7 @@ function eventReminderHtml(d) {
 }
 
 function eventReminderText(d) {
-  return `${d.title}\n\nThis event starts in about 15 minutes.\nWhen: ${d.whenText}\nWhere: ${d.whereText}\n\n${d.ctaLabel || 'View event'}: ${d.ctaUrl || 'https://agentship-platform.vercel.app'}\n\nYou're receiving this because you RSVP'd going to this event.`
+  return `${d.title}\n\nThis event starts in ${d.leadPhrase || 'a few minutes'}.\nWhen: ${d.whenText}\nWhere: ${d.whereText}\n\n${d.ctaLabel || 'View event'}: ${d.ctaUrl || 'https://agentship-platform.vercel.app'}\n\nYou're receiving this because you RSVP'd going to this event.`
 }
 
 export default async function handler(req, res) {
