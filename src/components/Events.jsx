@@ -27,6 +27,16 @@ function timeLabel(d) {
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 }
 
+// Compact time for calendar chips, e.g. "9a", "2:30p".
+function shortTime(d) {
+  let h = d.getHours()
+  const m = d.getMinutes()
+  const ap = h < 12 ? 'a' : 'p'
+  h = h % 12
+  if (h === 0) h = 12
+  return m === 0 ? `${h}${ap}` : `${h}:${String(m).padStart(2, '0')}${ap}`
+}
+
 // Build a Google Calendar "add event" link. All-day events use the
 // date-only format, where Google treats the end date as exclusive.
 function googleCalUrl(ev) {
@@ -97,10 +107,10 @@ export default function Events() {
   const [events, setEvents] = useState([])
   const [rsvps, setRsvps] = useState([])
   const [loading, setLoading] = useState(true)
-  const [cursor, setCursor] = useState(() => { const n = new Date(); return { year: n.getFullYear(), month: n.getMonth() } })
-  const [selectedKey, setSelectedKey] = useState(null) // null = "Upcoming" mode
+  const [view, setView] = useState('month')             // 'month' | 'week' | 'day'
+  const [anchor, setAnchor] = useState(() => new Date()) // focused date for the current view
   const [now, setNow] = useState(() => new Date())
-  const [editing, setEditing] = useState(null) // null | 'new' | eventObject
+  const [editing, setEditing] = useState(null)          // null | 'new' | eventObject
 
   // Re-tick every 30s so the "Join" button flips on without a refresh.
   useEffect(() => {
@@ -128,42 +138,39 @@ export default function Events() {
     return () => { supabase.removeChannel(ch) }
   }, [load])
 
-  // event_id -> count of "going"
   const goingCount = useMemo(() => {
     const m = {}
     rsvps.forEach(r => { if (r.status === 'going') m[r.event_id] = (m[r.event_id] || 0) + 1 })
     return m
   }, [rsvps])
 
-  // event_id -> my status
   const myStatus = useMemo(() => {
     const m = {}
     rsvps.forEach(r => { if (r.user_id === user?.id) m[r.event_id] = r.status })
     return m
   }, [rsvps, user])
 
-  // days in this month that have at least one event
-  const eventDays = useMemo(() => {
-    const s = new Set()
-    events.forEach(e => s.add(dayKey(new Date(e.start_time))))
-    return s
+  // dayKey -> that day's events, sorted by start time
+  const eventsByDay = useMemo(() => {
+    const m = {}
+    events.forEach(e => {
+      const k = dayKey(new Date(e.start_time))
+      ;(m[k] = m[k] || []).push(e)
+    })
+    Object.values(m).forEach(list => list.sort((a, b) => new Date(a.start_time) - new Date(b.start_time)))
+    return m
   }, [events])
 
-  const cells = useMemo(() => monthCells(cursor.year, cursor.month), [cursor])
+  const cells = useMemo(() => monthCells(anchor.getFullYear(), anchor.getMonth()), [anchor])
 
-  // What the right-hand list shows: a selected day's events, or all upcoming.
-  const listEvents = useMemo(() => {
-    if (selectedKey) {
-      return events.filter(e => dayKey(new Date(e.start_time)) === selectedKey)
-    }
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    return events.filter(e => new Date(e.end_time) >= startOfToday)
-  }, [events, selectedKey, now])
+  const weekDays = useMemo(() => {
+    const start = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() - anchor.getDay())
+    return Array.from({ length: 7 }, (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i))
+  }, [anchor])
 
   async function toggleRsvp(ev) {
     if (!user) return
     const next = myStatus[ev.id] === 'going' ? 'not_going' : 'going'
-    // optimistic
     setRsvps(prev => {
       const rest = prev.filter(r => !(r.event_id === ev.id && r.user_id === user.id))
       return [...rest, { event_id: ev.id, user_id: user.id, status: next }]
@@ -171,17 +178,13 @@ export default function Events() {
     const { error } = await supabase
       .from('event_rsvps')
       .upsert({ event_id: ev.id, user_id: user.id, status: next }, { onConflict: 'event_id,user_id' })
-    if (error) load() // roll back to server truth on failure
+    if (error) load()
   }
 
   async function deleteEvent(ev) {
     if (!window.confirm(`Delete "${ev.title}"?`)) return
     if (ev.series_id) {
-      // OK = whole series, Cancel = just this occurrence (they already
-      // confirmed the delete itself in the first prompt).
-      const whole = window.confirm(
-        'This event repeats.\n\nOK = delete the whole series.\nCancel = delete only this one.'
-      )
+      const whole = window.confirm('This event repeats.\n\nOK = delete the whole series.\nCancel = delete only this one.')
       if (whole) await supabase.from('events').delete().eq('series_id', ev.series_id)
       else await supabase.from('events').delete().eq('id', ev.id)
     } else {
@@ -190,19 +193,23 @@ export default function Events() {
     load()
   }
 
-  function prevMonth() {
-    setCursor(c => c.month === 0 ? { year: c.year - 1, month: 11 } : { year: c.year, month: c.month - 1 })
+  function shift(dir) {
+    setAnchor(a => {
+      if (view === 'month') return new Date(a.getFullYear(), a.getMonth() + dir, 1)
+      const days = view === 'week' ? 7 * dir : dir
+      return new Date(a.getFullYear(), a.getMonth(), a.getDate() + days)
+    })
   }
-  function nextMonth() {
-    setCursor(c => c.month === 11 ? { year: c.year + 1, month: 0 } : { year: c.year, month: c.month + 1 })
-  }
+  function goToday() { setAnchor(new Date()) }
+  function openDay(d) { setAnchor(new Date(d.getFullYear(), d.getMonth(), d.getDate())); setView('day') }
 
-  const monthTitle = new Date(cursor.year, cursor.month, 1)
-    .toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+  const title = view === 'month'
+    ? anchor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+    : view === 'day'
+    ? anchor.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+    : `${weekDays[0].toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${weekDays[6].toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
 
-  const listHeading = selectedKey
-    ? dateLabel(new Date(...selectedKey.split('-').map((v, i) => i === 1 ? Number(v) - 1 : Number(v))))
-    : 'Upcoming'
+  const dayEvents = eventsByDay[dayKey(anchor)] || []
 
   return (
     <div style={styles.page}>
@@ -218,79 +225,99 @@ export default function Events() {
         )}
       </div>
 
-      <div style={styles.grid}>
-        {/* Calendar */}
-        <div style={styles.calCard}>
-          <div style={styles.calNav}>
-            <button style={styles.calArrow} onClick={prevMonth} aria-label="Previous month">
-              <i className="ti ti-chevron-left" aria-hidden="true" />
+      <div style={styles.controls}>
+        <div style={styles.controlsLeft}>
+          <button style={styles.calArrow} onClick={() => shift(-1)} aria-label="Previous"><i className="ti ti-chevron-left" aria-hidden="true" /></button>
+          <button style={styles.calArrow} onClick={() => shift(1)} aria-label="Next"><i className="ti ti-chevron-right" aria-hidden="true" /></button>
+          <button style={styles.todayBtn} onClick={goToday}>Today</button>
+          <div style={styles.calMonth}>{title}</div>
+        </div>
+        <div style={styles.segmented}>
+          {['day', 'week', 'month'].map(v => (
+            <button key={v} onClick={() => setView(v)} style={{ ...styles.segBtn, ...(view === v ? styles.segBtnOn : {}) }}>
+              {v.charAt(0).toUpperCase() + v.slice(1)}
             </button>
-            <div style={styles.calMonth}>{monthTitle}</div>
-            <button style={styles.calArrow} onClick={nextMonth} aria-label="Next month">
-              <i className="ti ti-chevron-right" aria-hidden="true" />
-            </button>
-          </div>
+          ))}
+        </div>
+      </div>
 
-          <div style={styles.calGrid}>
+      {loading ? (
+        <p style={styles.muted}>Loading events...</p>
+      ) : view === 'month' ? (
+        <div style={styles.monthCard}>
+          <div style={styles.monthGrid}>
             {WEEKDAYS.map(w => <div key={w} style={styles.calWeekday}>{w}</div>)}
             {cells.map(({ date, inMonth }, i) => {
-              const key = dayKey(date)
-              const hasEvent = eventDays.has(key)
-              const isSelected = selectedKey === key
+              const list = eventsByDay[dayKey(date)] || []
               const isToday = sameDay(date, now)
               return (
-                <button
-                  key={i}
-                  onClick={() => setSelectedKey(isSelected ? null : key)}
-                  style={{
-                    ...styles.calDay,
-                    color: isSelected ? '#0A0A0A' : inMonth ? (isToday ? GOLD : '#ccc') : '#3a3a3a',
-                    background: isSelected ? GOLD : 'transparent',
-                    fontWeight: isSelected || isToday ? 700 : 400,
-                  }}
-                >
-                  {date.getDate()}
-                  {hasEvent && !isSelected && <span style={styles.calDot} />}
-                </button>
+                <div key={i} style={{ ...styles.monthCell, background: inMonth ? '#1b1b1b' : 'transparent' }}>
+                  <button
+                    onClick={() => openDay(date)}
+                    style={{
+                      ...styles.monthNum,
+                      color: isToday ? '#0A0A0A' : inMonth ? '#ccc' : '#3a3a3a',
+                      background: isToday ? GOLD : 'transparent',
+                      fontWeight: isToday ? 700 : 400,
+                    }}
+                  >
+                    {date.getDate()}
+                  </button>
+                  {list.slice(0, 2).map(ev => (
+                    <button key={ev.id} onClick={() => openDay(date)} style={styles.monthChip}>
+                      {ev.all_day ? 'All day' : shortTime(new Date(ev.start_time))} · {ev.title}
+                    </button>
+                  ))}
+                  {list.length > 2 && (
+                    <button onClick={() => openDay(date)} style={styles.monthMore}>+{list.length - 2} more</button>
+                  )}
+                </div>
               )
             })}
           </div>
-
-          {selectedKey && (
-            <button style={styles.clearDay} onClick={() => setSelectedKey(null)}>
-              <i className="ti ti-arrow-left" aria-hidden="true" style={{ fontSize: '12px' }} /> Back to upcoming
-            </button>
-          )}
         </div>
-
-        {/* List */}
-        <div style={styles.listCol}>
-          <div style={styles.listHeading}>{listHeading}</div>
-
-          {loading ? (
-            <p style={styles.muted}>Loading events...</p>
-          ) : listEvents.length === 0 ? (
-            <p style={styles.muted}>
-              {selectedKey ? 'Nothing scheduled this day.' : 'No upcoming events.'}
-              {canManage && !selectedKey && ' Create one with New event.'}
-            </p>
-          ) : (
-            listEvents.map(ev => (
-              <EventCard
-                key={ev.id}
-                ev={ev}
-                now={now}
-                going={goingCount[ev.id] || 0}
-                mine={myStatus[ev.id]}
-                canManage={canManage}
-                onRsvp={() => toggleRsvp(ev)}
-                onEdit={() => setEditing(ev)}
-                onDelete={() => deleteEvent(ev)}
-              />
-            ))
-          )}
+      ) : view === 'week' ? (
+        <div style={styles.weekWrap}>
+          {weekDays.map((d, i) => {
+            const list = eventsByDay[dayKey(d)] || []
+            const isToday = sameDay(d, now)
+            return (
+              <div key={i} style={styles.weekCol}>
+                <button onClick={() => openDay(d)} style={styles.weekHead}>
+                  <div style={styles.weekDow}>{WEEKDAYS[d.getDay()]}</div>
+                  <div style={{ ...styles.weekDate, color: isToday ? GOLD : '#ccc', fontWeight: isToday ? 700 : 500 }}>{d.getDate()}</div>
+                </button>
+                <div style={styles.weekBody}>
+                  {list.length === 0 ? <div style={styles.weekEmpty} /> : list.map(ev => (
+                    <button key={ev.id} onClick={() => openDay(d)} style={styles.weekChip}>
+                      <div style={styles.weekChipTime}>{ev.all_day ? 'All day' : shortTime(new Date(ev.start_time))}</div>
+                      <div style={styles.weekChipTitle}>{ev.title}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
         </div>
-      </div>
+      ) : (
+        <div style={styles.dayCol}>
+          {dayEvents.length === 0 ? (
+            <p style={styles.muted}>Nothing scheduled this day.{canManage ? ' Create one with New event.' : ''}</p>
+          ) : dayEvents.map(ev => (
+            <EventCard
+              key={ev.id}
+              ev={ev}
+              now={now}
+              going={goingCount[ev.id] || 0}
+              mine={myStatus[ev.id]}
+              canManage={canManage}
+              onRsvp={() => toggleRsvp(ev)}
+              onEdit={() => setEditing(ev)}
+              onDelete={() => deleteEvent(ev)}
+            />
+          ))}
+        </div>
+      )}
 
       {editing && (
         <EventForm
@@ -679,6 +706,29 @@ function EventForm({ event, userId, onClose, onSaved }) {
 // ---- styles -------------------------------------------------------------
 
 const styles = {
+  controls: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' },
+  controlsLeft: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' },
+  todayBtn: { padding: '7px 14px', borderRadius: '8px', background: 'transparent', border: `0.5px solid ${GOLD}`, color: GOLD, fontSize: '12px', fontWeight: '500', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif' },
+  segmented: { display: 'flex', background: '#0A0A0A', border: '0.5px solid #333', borderRadius: '8px', padding: '3px', gap: '2px' },
+  segBtn: { padding: '6px 14px', borderRadius: '6px', background: 'transparent', border: 'none', color: '#888', fontSize: '12px', fontWeight: '500', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif' },
+  segBtnOn: { background: GOLD, color: '#0A0A0A' },
+  monthCard: { background: '#1E1E1E', border: '0.5px solid #2a2a2a', borderRadius: '12px', padding: '14px' },
+  monthGrid: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '5px' },
+  monthCell: { minHeight: '88px', border: '0.5px solid #232323', borderRadius: '6px', padding: '4px', display: 'flex', flexDirection: 'column', gap: '3px', overflow: 'hidden' },
+  monthNum: { width: '24px', height: '24px', flexShrink: 0, borderRadius: '50%', border: 'none', background: 'transparent', fontSize: '12px', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif', display: 'flex', alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start' },
+  monthChip: { textAlign: 'left', background: 'rgba(201,168,76,0.14)', borderLeft: `2px solid ${GOLD}`, borderTop: 'none', borderRight: 'none', borderBottom: 'none', borderRadius: '3px', padding: '2px 5px', fontSize: '10px', color: '#e7d9a8', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'Montserrat, sans-serif', width: '100%' },
+  monthMore: { textAlign: 'left', background: 'transparent', border: 'none', color: '#888', fontSize: '10px', cursor: 'pointer', padding: '0 5px', fontFamily: 'Montserrat, sans-serif' },
+  weekWrap: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', alignItems: 'start' },
+  weekCol: { background: '#1E1E1E', border: '0.5px solid #2a2a2a', borderRadius: '10px', overflow: 'hidden', minHeight: '260px', display: 'flex', flexDirection: 'column' },
+  weekHead: { background: 'transparent', border: 'none', borderBottom: '0.5px solid #2a2a2a', padding: '8px 4px', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif' },
+  weekDow: { fontSize: '9px', color: '#555', letterSpacing: '0.6px', textAlign: 'center' },
+  weekDate: { fontSize: '15px', textAlign: 'center', marginTop: '2px' },
+  weekBody: { padding: '6px', display: 'flex', flexDirection: 'column', gap: '5px', flex: 1 },
+  weekEmpty: { flex: 1 },
+  weekChip: { textAlign: 'left', background: 'rgba(201,168,76,0.14)', borderLeft: `2px solid ${GOLD}`, borderTop: 'none', borderRight: 'none', borderBottom: 'none', borderRadius: '4px', padding: '5px 7px', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif' },
+  weekChipTime: { fontSize: '9px', color: GOLD, fontWeight: '700' },
+  weekChipTitle: { fontSize: '11px', color: '#e7d9a8', marginTop: '2px', lineHeight: 1.3 },
+  dayCol: { display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '520px' },
   page: { padding: '28px 32px', maxWidth: '1080px', display: 'flex', flexDirection: 'column', gap: '18px' },
   header: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' },
   title: { fontSize: '22px', fontWeight: '700', color: '#FFFFFF', letterSpacing: '-0.3px' },
