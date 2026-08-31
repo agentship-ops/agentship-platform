@@ -7,7 +7,8 @@
 export default async function handler(req, res) {
   try {
     const token = process.env.INTROSPECT_TOKEN;
-    if (!token || req.query.token !== token) {
+    const hookOk = req.headers['x-push-secret'] && req.headers['x-push-secret'] === process.env.PUSH_HOOK_SECRET;
+    if (!hookOk && (!token || req.query.token !== token)) {
       return res.status(401).json({ error: 'Unauthorized. Call with ?token=YOUR_TOKEN (the same one as before).' });
     }
     const fubKey = process.env.FUB_API_KEY;
