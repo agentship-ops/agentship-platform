@@ -68,8 +68,8 @@ function IconLogout() {
   )
 }
 
-const CHANNEL_TO_VIEW = { agentship: 'ch-agentship' }
-const CHANNEL_LABEL = { agentship: '# Agentship' }
+const CHANNEL_TO_VIEW = { agentship: 'ch-agentship', bullpen: 'bullpen', referrals: 'referrals' }
+const CHANNEL_LABEL = { agentship: '# Agentship', bullpen: 'Bullpen', referrals: 'Referrals' }
 
 // Must match the boolean columns on notification_prefs.
 const PREF_KEYS = ['dm', 'mentions', 'replies', 'events', 'bullpen', 'referrals', 'channels', 'training', 'resources']
@@ -269,6 +269,10 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0, acti
                           ? <> posted an event <span>{n.preview}</span></>
                           : n.type === 'event_change'
                           ? <> updated an event <span>{n.preview}</span></>
+                          : n.type === 'comment'
+                          ? <> commented on your post <span>{n.preview}</span></>
+                          : n.type === 'claim'
+                          ? <> claimed your referral</>
                           : <> replied to you</>}
                       </span>
                       <span style={styles.notifSub}>
