@@ -45,18 +45,8 @@ const NAV = [
   },
   {
     type: 'section',
-    id: 'training',
-    label: 'Training',
-    icon: 'ti-map',
-    defaultOpen: true,
-    items: [
-      { id: 'mastery', label: 'Platform Road to Mastery', icon: 'ti-map' },
-    ],
-  },
-  {
-    type: 'section',
     id: 'trainlib',
-    label: 'Training Library',
+    label: 'Agentship Academy',
     icon: 'ti-video',
     defaultOpen: false,
     items: [
