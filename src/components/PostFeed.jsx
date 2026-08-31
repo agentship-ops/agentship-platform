@@ -23,7 +23,7 @@ const CONFIG = {
   referrals: {
     title: 'Referrals',
     subtitle: 'Share and claim referral opportunities across the network',
-    tags: ['Buyer', 'Seller', 'Rental'],
+    tags: ['Buyer', 'Seller', 'Commercial'],
     placeholder: 'Post a referral. Type @ to tag a teammate…',
     adminOnly: false,
     claim: true,
