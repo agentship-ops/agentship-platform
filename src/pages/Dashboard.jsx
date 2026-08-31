@@ -13,6 +13,7 @@ import Settings from '../components/Settings'
 import Directory from '../components/Directory'
 import Events from '../components/Events'
 import PostFeed from '../components/PostFeed'
+import WelcomeSplash from '../components/WelcomeSplash'
 
 const VIEWS = {
   leaderboard: <Leaderboard />,
@@ -113,6 +114,7 @@ export default function Dashboard() {
 
   return (
     <div style={styles.app}>
+      <WelcomeSplash />
       <div style={styles.column}>
         <TopBar
           onToggleSidebar={() => setSidebarOpen(o => !o)}
