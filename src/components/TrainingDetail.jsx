@@ -59,6 +59,19 @@ export default function TrainingDetail({ slug }) {
         <p style={styles.description}>{training.description}</p>
       )}
 
+      {training.learn_points && training.learn_points.length > 0 && (
+        <div style={styles.learn}>
+          <h2 style={styles.learnTitle}>What you'll learn</h2>
+          <ul style={styles.learnList}>
+            {training.learn_points.map(function (point, i) {
+              return (
+                <li key={i} style={styles.learnItem}>{point}</li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
+
       {resources.length > 0 && (
         <div style={styles.resources}>
           <h2 style={styles.resourcesTitle}>Resources</h2>
@@ -115,6 +128,31 @@ const styles = {
     fontSize: '14px',
     color: '#aaaaaa',
     lineHeight: 1.7,
+  },
+  learn: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+  },
+  learnTitle: {
+    fontSize: '11px',
+    fontWeight: '600',
+    color: '#666',
+    textTransform: 'uppercase',
+    letterSpacing: '0.8px',
+  },
+  learnList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+    paddingLeft: '20px',
+    margin: 0,
+  },
+  learnItem: {
+    fontSize: '14px',
+    color: '#aaaaaa',
+    lineHeight: 1.6,
+    paddingLeft: '4px',
   },
   resources: {
     display: 'flex',

@@ -55,6 +55,7 @@ const NAV = [
       { id: 'tlib-3', label: 'Language of Sales', icon: 'ti-player-play' },
       { id: 'tlib-4', label: 'Buyer Outbound', icon: 'ti-player-play' },
       { id: 'tlib-5', label: 'Follow Up Boss Basics', icon: 'ti-player-play' },
+      { id: 'tlib-6', label: 'Rapport Building Techniques', icon: 'ti-player-play' },
     ],
   },
   {
