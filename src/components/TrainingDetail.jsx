@@ -41,19 +41,27 @@ export default function TrainingDetail({ slug }) {
     )
   }
 
+  const videoSrc = training.loom_id
+    ? `https://www.loom.com/embed/${training.loom_id}`
+    : training.youtube_id
+    ? `https://www.youtube.com/embed/${training.youtube_id}`
+    : null
+
   return (
     <div style={styles.page}>
       <h1 style={styles.title}>{training.title}</h1>
 
-      <div style={styles.videoWrap}>
-        <iframe
-          src={`https://www.youtube.com/embed/${training.youtube_id}`}
-          title={training.title}
-          style={styles.iframe}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-        />
-      </div>
+      {videoSrc && (
+        <div style={styles.videoWrap}>
+          <iframe
+            src={videoSrc}
+            title={training.title}
+            style={styles.iframe}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+            allowFullScreen
+          />
+        </div>
+      )}
 
       {training.description && (
         <p style={styles.description}>{training.description}</p>
