@@ -137,7 +137,7 @@ const styles = {
   learnTitle: {
     fontSize: '11px',
     fontWeight: '600',
-    color: '#666',
+    color: '#C9A84C',
     textTransform: 'uppercase',
     letterSpacing: '0.8px',
   },
