@@ -35,7 +35,6 @@ const VIEWS = {
   'tlib-2': <TrainingDetail slug="tlib-2" />,
   'tlib-3': <TrainingDetail slug="tlib-3" />,
   'tlib-4': <TrainingDetail slug="tlib-4" />,
-  'tlib-5': <TrainingDetail slug="tlib-5" />,
   'tlib-6': <TrainingDetail slug="tlib-6" />,
   'res-vendors': <ComingSoon title="Preferred Vendors" icon="ti-users" description="Opens as a PDF or Google Doc. Built out in Phase 3." phase="Phase 3" />,
   'res-audible': <ComingSoon title="Audible" icon="ti-headphones" description="External link. Built out in Phase 3." phase="Phase 3" />,
