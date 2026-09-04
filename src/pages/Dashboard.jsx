@@ -15,6 +15,7 @@ import Events from '../components/Events'
 import PostFeed from '../components/PostFeed'
 import WelcomeSplash from '../components/WelcomeSplash'
 import ResourceWinTheDay from '../components/ResourceWinTheDay'
+import ResourceAudible from '../components/ResourceAudible'
 
 const VIEWS = {
   leaderboard: <Leaderboard />,
@@ -38,7 +39,7 @@ const VIEWS = {
   'tlib-4': <TrainingDetail slug="tlib-4" />,
   'tlib-6': <TrainingDetail slug="tlib-6" />,
   'res-vendors': <ComingSoon title="Preferred Vendors" icon="ti-users" description="Opens as a PDF or Google Doc. Built out in Phase 3." phase="Phase 3" />,
-  'res-audible': <ComingSoon title="Audible" icon="ti-headphones" description="External link. Built out in Phase 3." phase="Phase 3" />,
+  'res-audible': <ResourceAudible />,
   'res-winday': <ResourceWinTheDay />,
   'res-scripts': <ComingSoon title="Scripts" icon="ti-file-text" description="Opens as a Google Doc. Built out in Phase 3." phase="Phase 3" />,
 }
