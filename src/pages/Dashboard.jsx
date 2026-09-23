@@ -17,6 +17,7 @@ import WelcomeSplash from '../components/WelcomeSplash'
 import ResourceWinTheDay from '../components/ResourceWinTheDay'
 import ResourceAudible from '../components/ResourceAudible'
 import ResourceVendors from '../components/ResourceVendors'
+import ScriptsLibrary from '../components/ScriptsLibrary'
 
 const VIEWS = {
   leaderboard: <Leaderboard />,
@@ -42,7 +43,7 @@ const VIEWS = {
   'res-vendors': <ResourceVendors />,
   'res-audible': <ResourceAudible />,
   'res-winday': <ResourceWinTheDay />,
-  'res-scripts': <ComingSoon title="Scripts" icon="ti-file-text" description="Opens as a Google Doc. Built out in Phase 3." phase="Phase 3" />,
+  'res-scripts': <ScriptsLibrary />,
 }
 
 // Each account-menu item is its own view id, so the browser-agnostic
