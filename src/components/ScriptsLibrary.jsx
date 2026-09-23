@@ -32,7 +32,6 @@ function Block({ b }) {
       return (
         <div style={styles.sectionDivider}>
           <span style={styles.sectionLabel}>{b.c}</span>
-          <span style={styles.sectionRule} />
         </div>
       )
     case 'bullet':
@@ -345,12 +344,13 @@ const styles = {
   },
   cueIcon: { fontSize: '15px', color: '#a58f52', flexShrink: 0, marginTop: '1px' },
   cueText: { fontSize: '12px', fontStyle: 'italic', lineHeight: 1.6, color: '#b9a877' },
-  sectionDivider: { display: 'flex', alignItems: 'center', gap: '12px', margin: '24px 0 16px' },
-  sectionLabel: {
-    fontSize: '11px', fontWeight: '700', color: GOLD, textTransform: 'uppercase',
-    letterSpacing: '1.5px', whiteSpace: 'nowrap',
+  sectionDivider: {
+    margin: '26px 0 14px', borderBottom: '0.5px solid #2a2a2a', paddingBottom: '8px',
   },
-  sectionRule: { flex: 1, height: '0.5px', background: '#2a2a2a' },
+  sectionLabel: {
+    display: 'block', fontSize: '11px', fontWeight: '700', color: GOLD,
+    textTransform: 'uppercase', letterSpacing: '1.5px', lineHeight: 1.5,
+  },
   bulletRow: { display: 'flex', gap: '9px', margin: '0 0 10px', alignItems: 'flex-start' },
   bulletDot: { color: GOLD, fontSize: '14px', lineHeight: 1.75, flexShrink: 0 },
   bulletText: { fontSize: '14px', lineHeight: 1.75, color: '#e5e5e5' },
