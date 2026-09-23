@@ -67,7 +67,7 @@ const NAV = [
       { id: 'res-vendors', label: 'Preferred Vendors', icon: 'ti-users' },
       { id: 'res-audible', label: 'Audible', icon: 'ti-headphones' },
       { id: 'res-winday', label: 'Win the Day Sheets', icon: 'ti-sun' },
-      { id: 'res-scripts', label: 'Scripts', icon: 'ti-file-text' },
+      { id: 'res-scripts', label: 'Conversation Frameworks', icon: 'ti-file-text' },
     ],
   },
   {

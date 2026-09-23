@@ -54,11 +54,11 @@ function ReadingView({ script, onBack }) {
   return (
     <div style={styles.reader}>
       <div style={styles.readerBar}>
-        <button onClick={onBack} aria-label="Back to scripts" style={styles.backBtn}>
+        <button onClick={onBack} aria-label="Back to Conversation Frameworks" style={styles.backBtn}>
           <i className="ti ti-chevron-left" aria-hidden="true" style={{ fontSize: '18px' }} />
         </button>
         <div style={styles.readerTitleWrap}>
-          <div style={styles.crumb}>Scripts &rsaquo; {script.category}</div>
+          <div style={styles.crumb}>Conversation Frameworks &rsaquo; {script.category}</div>
           <div style={styles.readerTitle}>{script.title}</div>
         </div>
         {script.pdf_path && (
@@ -144,7 +144,7 @@ export default function ScriptsLibrary() {
     <div style={styles.page}>
       <div style={styles.header}>
         <div style={styles.eyebrow}>Resource Library</div>
-        <h1 style={styles.title}>Scripts</h1>
+        <h1 style={styles.title}>Conversation Frameworks</h1>
         <p style={styles.subtitle}>
           Talk-tracks for calls, objections, and follow-up. Open a playbook to run it live,
           or copy a talk-track and go.
@@ -154,7 +154,7 @@ export default function ScriptsLibrary() {
       {loading ? (
         <div style={styles.loadingRow}><span style={styles.loadingDot} /></div>
       ) : groups.length === 0 ? (
-        <p style={styles.empty}>No scripts yet. They&apos;ll appear here as they&apos;re added.</p>
+        <p style={styles.empty}>No frameworks yet. They&apos;ll appear here as they&apos;re added.</p>
       ) : (
         groups.map(group => {
           const isOpen = openCats[group.category] !== false
