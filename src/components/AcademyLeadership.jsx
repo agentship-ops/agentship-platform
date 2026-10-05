@@ -56,7 +56,7 @@ export default function AcademyLeadership({ programTrainings }) {
   return (
     <section style={styles.wrap}>
       <h2 style={styles.h2}>
-        Team progress <span style={styles.tag}>Admins and leaders only</span>
+        Team Progress <span style={styles.tag}>Admins and leaders only</span>
       </h2>
       <div style={styles.tabs} role="tablist">
         {[['agents', 'Agents'], ['flags', 'Speed flags'], ['questions', 'Question report']].map(([k, label]) => (
