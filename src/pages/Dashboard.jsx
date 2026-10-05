@@ -22,6 +22,7 @@ import ScriptsLibrary from '../components/ScriptsLibrary'
 const VIEWS = {
   leaderboard: <Leaderboard />,
   directory: <Directory />,
+  ask: <ComingSoon title="Ask Agentship" icon="ti-sparkles" description="Ask a question and get answers grounded in Kalie's frameworks, coaching, and playbooks." phase="Coming Soon" />,
   command: <ComingSoon title="Command Center" icon="ti-layout-dashboard" description="Your leads, calling queue, and pipeline. This is where you win the day." phase="Phase 2" />,
   atlas: <ComingSoon title="Atlas" icon="ti-robot" description="Your AI teammate. Update leads, log notes, and move deals forward — here or by text from the field." phase="Phase 2" />,
   goal: <ComingSoon title="Goal Tracker" icon="ti-chart-bar" description="Your goals vs actual activity. See where you're on track and where to push." phase="Phase 2" />,
