@@ -9,6 +9,18 @@ const NAV = [
     icon: 'ti-trophy',
   },
   {
+    type: 'standalone',
+    id: 'ask',
+    label: 'Ask Agentship',
+    icon: 'ti-sparkles',
+  },
+  {
+    type: 'standalone',
+    id: 'directory',
+    label: 'Directory',
+    icon: 'ti-address-book',
+  },
+  {
     type: 'section',
     id: 'tools',
     label: 'My Tools',
@@ -69,16 +81,6 @@ const NAV = [
       { id: 'res-winday', label: 'Win the Day Sheets', icon: 'ti-sun' },
       { id: 'res-scripts', label: 'Conversation Frameworks', icon: 'ti-file-text' },
     ],
-  },
-  {
-    type: 'divider',
-    id: 'div-directory',
-  },
-  {
-    type: 'standalone',
-    id: 'directory',
-    label: 'Directory',
-    icon: 'ti-address-book',
   },
 ]
 
