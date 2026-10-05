@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import AcademyNav from './AcademyNav'
 import { supabase } from '../lib/supabase'
 
 const NAV = [
@@ -29,8 +30,7 @@ const NAV = [
     items: [
       { id: 'command', label: 'Command Center', icon: 'ti-layout-dashboard' },
       { id: 'atlas', label: 'Atlas', icon: 'ti-robot' },
-      { id: 'goal', label: 'Goal Tracker', icon: 'ti-chart-bar' },
-      { id: 'pl', label: 'P&L', icon: 'ti-cash' },
+      { id: 'goal', label: 'My Business', icon: 'ti-chart-bar' },
     ],
   },
   {
@@ -62,8 +62,7 @@ const NAV = [
     icon: 'ti-video',
     defaultOpen: false,
     items: [
-      { id: 'academy-onboarding', label: 'Collective Onboarding', icon: 'ti-school' },
-      { id: 'academy-library', label: 'Training Library', icon: 'ti-books' },
+      // Filled in by AcademyNav (Collective Launch and its sections).
     ],
   },
   {
@@ -179,9 +178,11 @@ export default function Sidebar({ open, activeView, setActiveView }) {
                 </button>
                 {isOpen && (
                   <div style={styles.subItems}>
+                    {node.id === 'trainlib' && (
+                      <AcademyNav activeView={activeView} setActiveView={setActiveView} />
+                    )}
                     {node.items.map(item => {
-                      // Training pages use ids like "academy-onboarding:<slug>", so the parent stays highlighted.
-                      const active = activeView === item.id || activeView.startsWith(item.id + ':')
+                      const active = activeView === item.id
                       const showAgentshipCount =
                         item.id === 'ch-agentship' && agentshipUnread > 0 && activeView !== 'ch-agentship'
                       return (

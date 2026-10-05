@@ -6,9 +6,9 @@ import AcademyLeadership from './AcademyLeadership'
 import { isTrainingDone } from './academyUtils'
 
 // View ids used by the sidebar and Dashboard:
-//   academy-onboarding            Collective Onboarding page
+//   academy-onboarding            Collective page
 //   academy-library               Training Library page
-//   academy-onboarding:<slug>     a training, opened from onboarding
+//   academy-onboarding:<slug>     a training inside Collective
 //   academy-library:<slug>        a training, opened from the library
 export const ONBOARDING_VIEW = 'academy-onboarding'
 export const LIBRARY_VIEW = 'academy-library'
@@ -30,6 +30,8 @@ export default function Academy({ view, onNavigate }) {
     const map = {}
     ;(data || []).forEach(r => { map[r.training_id] = r })
     setProgress(map)
+    // Lets the sidebar refresh its gold checks.
+    window.dispatchEvent(new Event('academy-progress-changed'))
   }, [userId])
 
   useEffect(() => {
@@ -89,7 +91,7 @@ export default function Academy({ view, onNavigate }) {
         progressMap={progress}
         onProgressChange={loadProgress}
         backView={fromLibrary || !inProgram ? LIBRARY_VIEW : ONBOARDING_VIEW}
-        backLabel={fromLibrary || !inProgram ? 'Training Library' : (program?.title || 'Collective Onboarding')}
+        backLabel={fromLibrary || !inProgram ? 'Training Library' : (program?.title || 'Collective')}
         onNavigate={onNavigate}
       />
     )
@@ -114,7 +116,7 @@ export default function Academy({ view, onNavigate }) {
     )
   }
 
-  // Collective Onboarding
+  // Program page (Collective)
   const done = programTrainings.filter(t => isTrainingDone(t, progress[t.id])).length
   const total = programTrainings.length
   const othersPassed = programTrainings.filter(t => !t.is_final).every(t => progress[t.id]?.passed_at)
@@ -122,7 +124,7 @@ export default function Academy({ view, onNavigate }) {
   return (
     <div style={styles.page}>
       <div style={styles.crumb}>Agentship Academy</div>
-      <h1 style={styles.title}>{program?.title || 'Collective Onboarding'}</h1>
+      <h1 style={styles.title}>{program?.title || 'Collective'}</h1>
       {program?.description && <p style={styles.lede}>{program.description}</p>}
 
       <div style={styles.progressCard}>
