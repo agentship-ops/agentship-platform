@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import AcademyNav from './AcademyNav'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
 
 const NAV = [
   {
@@ -30,7 +31,8 @@ const NAV = [
     items: [
       { id: 'command', label: 'Command Center', icon: 'ti-layout-dashboard' },
       { id: 'atlas', label: 'Atlas', icon: 'ti-robot' },
-      { id: 'goal', label: 'My Business', icon: 'ti-chart-bar' },
+      { id: 'mybusiness', label: 'My Business', icon: 'ti-briefcase' },
+      { id: 'myagents', label: 'My Agents', icon: 'ti-users-group', roles: ['leader', 'admin'] },
     ],
   },
   {
@@ -81,6 +83,8 @@ const NAV = [
 ]
 
 export default function Sidebar({ open, activeView, setActiveView }) {
+  const { profile } = useAuth()
+  const accountType = profile?.account_type
   const [openSections, setOpenSections] = useState(() => {
     const defaults = {}
     NAV.forEach(n => { if (n.type === 'section') defaults[n.id] = n.defaultOpen })
@@ -181,8 +185,9 @@ export default function Sidebar({ open, activeView, setActiveView }) {
                     {node.id === 'trainlib' && (
                       <AcademyNav activeView={activeView} setActiveView={setActiveView} />
                     )}
-                    {node.items.map(item => {
-                      const active = activeView === item.id
+                    {node.items.filter(item => !item.roles || item.roles.includes(accountType)).map(item => {
+                      // My Business tabs use ids like "mybusiness:pace", so the nav item stays highlighted.
+                      const active = activeView === item.id || (item.id === 'mybusiness' && activeView.startsWith('mybusiness:'))
                       const showAgentshipCount =
                         item.id === 'ch-agentship' && agentshipUnread > 0 && activeView !== 'ch-agentship'
                       return (

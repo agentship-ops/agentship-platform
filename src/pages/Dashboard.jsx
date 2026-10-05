@@ -19,6 +19,8 @@ import ResourceWinTheDay from '../components/ResourceWinTheDay'
 import ResourceAudible from '../components/ResourceAudible'
 import ResourceVendors from '../components/ResourceVendors'
 import ScriptsLibrary from '../components/ScriptsLibrary'
+import MyBusiness from '../components/myBusiness/MyBusiness'
+import MyAgents from '../components/myBusiness/MyAgents'
 
 const VIEWS = {
   leaderboard: <Leaderboard />,
@@ -26,7 +28,6 @@ const VIEWS = {
   ask: <ComingSoon title="Ask Agentship" icon="ti-sparkles" description="Ask a question and get answers grounded in Kalie's frameworks, coaching, and playbooks." phase="Coming Soon" />,
   command: <ComingSoon title="Command Center" icon="ti-layout-dashboard" description="Your leads, calling queue, and pipeline. This is where you win the day." phase="Phase 2" />,
   atlas: <ComingSoon title="Atlas" icon="ti-robot" description="Your AI teammate. Update leads, log notes, and move deals forward — here or by text from the field." phase="Phase 2" />,
-  goal: <ComingSoon title="My Business" icon="ti-chart-bar" description="Your goals vs actual activity. See where you're on track and where to push." phase="Phase 2" />,
   welcome: <ComingSoon title="Welcome" icon="ti-user-plus" description="Welcome new agents and make posts for the team to see." phase="Phase 2" />,
   updates: <ComingSoon title="Updates" icon="ti-speakerphone" description="Leader announcements and team updates — post-based space." phase="Phase 2" />,
   events: <Events />,
@@ -53,6 +54,10 @@ function academyView(view) {
   return null
 }
 
+// The old Goal Tracker and agent P&L now live inside My Business, so any
+// saved link to them opens the matching My Business tab.
+const REDIRECTS = { goal: 'mybusiness:pace', pl: 'mybusiness:pl' }
+
 const SETTINGS_SECTIONS = {
   'settings-profile': 'profile',
   'settings-account': 'account',
@@ -61,8 +66,10 @@ const SETTINGS_SECTIONS = {
 }
 
 export default function Dashboard() {
-  const { user, loading } = useAuth()
-  const [activeView, setActiveView] = useState('leaderboard')
+  const { user, profile, loading } = useAuth()
+  const [activeView, setActiveViewRaw] = useState('leaderboard')
+  const setActiveView = useCallback(v => setActiveViewRaw(REDIRECTS[v] || v), [])
+  const isLeader = profile?.account_type === 'leader' || profile?.account_type === 'admin'
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [dmUnread, setDmUnread] = useState(0)
 
@@ -147,6 +154,10 @@ export default function Dashboard() {
                 section={SETTINGS_SECTIONS[activeView]}
                 onSectionChange={setActiveView}
               />
+            ) : activeView === 'mybusiness' || activeView.startsWith('mybusiness:') ? (
+              <MyBusiness key={activeView} initialTab={activeView.split(':')[1]} />
+            ) : activeView === 'myagents' && isLeader ? (
+              <MyAgents />
             ) : academyView(activeView) ? (
               <Academy view={academyView(activeView)} onNavigate={setActiveView} />
             ) : (
