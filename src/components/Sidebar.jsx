@@ -29,8 +29,7 @@ const NAV = [
     items: [
       { id: 'command', label: 'Command Center', icon: 'ti-layout-dashboard' },
       { id: 'atlas', label: 'Atlas', icon: 'ti-robot' },
-      { id: 'goal', label: 'Goal Tracker', icon: 'ti-chart-bar' },
-      { id: 'pl', label: 'P&L', icon: 'ti-cash' },
+      { id: 'goal', label: 'My Business', icon: 'ti-chart-bar' },
     ],
   },
   {
