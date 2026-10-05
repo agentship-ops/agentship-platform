@@ -26,8 +26,7 @@ const VIEWS = {
   ask: <ComingSoon title="Ask Agentship" icon="ti-sparkles" description="Ask a question and get answers grounded in Kalie's frameworks, coaching, and playbooks." phase="Coming Soon" />,
   command: <ComingSoon title="Command Center" icon="ti-layout-dashboard" description="Your leads, calling queue, and pipeline. This is where you win the day." phase="Phase 2" />,
   atlas: <ComingSoon title="Atlas" icon="ti-robot" description="Your AI teammate. Update leads, log notes, and move deals forward — here or by text from the field." phase="Phase 2" />,
-  goal: <ComingSoon title="Goal Tracker" icon="ti-chart-bar" description="Your goals vs actual activity. See where you're on track and where to push." phase="Phase 2" />,
-  pl: <ComingSoon title="P&L" icon="ti-cash" description="Your income, expenses, and what you're actually keeping." phase="Phase 2" />,
+  goal: <ComingSoon title="My Business" icon="ti-chart-bar" description="Your goals vs actual activity. See where you're on track and where to push." phase="Phase 2" />,
   welcome: <ComingSoon title="Welcome" icon="ti-user-plus" description="Welcome new agents and make posts for the team to see." phase="Phase 2" />,
   updates: <ComingSoon title="Updates" icon="ti-speakerphone" description="Leader announcements and team updates — post-based space." phase="Phase 2" />,
   events: <Events />,
@@ -45,12 +44,12 @@ const VIEWS = {
 
 // Each account-menu item is its own view id, so the browser-agnostic
 // activeView string still says exactly where you are.
-// Agentship Academy views: "academy-onboarding", "academy-library", or either one
-// followed by ":<training slug>". Old training ids (tlib-1, tlib-3, tlib-6) open
-// that training from the Training Library so any saved links still work.
+// Agentship Academy views: "academy-onboarding" or "academy-onboarding:<training slug>".
+// Old training ids (tlib-1, tlib-3, tlib-6) open that training inside Collective
+// Launch so any saved links still work.
 function academyView(view) {
   if (view.startsWith('academy-')) return view
-  if (view === 'tlib-1' || view === 'tlib-3' || view === 'tlib-6') return `academy-library:${view}`
+  if (view === 'tlib-1' || view === 'tlib-3' || view === 'tlib-6') return `academy-onboarding:${view}`
   return null
 }
 
