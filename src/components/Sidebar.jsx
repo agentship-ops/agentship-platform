@@ -29,7 +29,8 @@ const NAV = [
     items: [
       { id: 'command', label: 'Command Center', icon: 'ti-layout-dashboard' },
       { id: 'atlas', label: 'Atlas', icon: 'ti-robot' },
-      { id: 'goal', label: 'My Business', icon: 'ti-chart-bar' },
+      { id: 'goal', label: 'Goal Tracker', icon: 'ti-chart-bar' },
+      { id: 'pl', label: 'P&L', icon: 'ti-cash' },
     ],
   },
   {
@@ -61,11 +62,8 @@ const NAV = [
     icon: 'ti-video',
     defaultOpen: false,
     items: [
-      { id: 'tlib-1', label: 'Winning in Real Estate', icon: 'ti-player-play' },
-      { id: 'tlib-2', label: 'Time Blocking & Scheduling', icon: 'ti-player-play' },
-      { id: 'tlib-3', label: 'Language of Sales', icon: 'ti-player-play' },
-      { id: 'tlib-4', label: 'Buyer Outbound', icon: 'ti-player-play' },
-      { id: 'tlib-6', label: 'Rapport Building Techniques', icon: 'ti-player-play' },
+      { id: 'academy-onboarding', label: 'Collective Onboarding', icon: 'ti-school' },
+      { id: 'academy-library', label: 'Training Library', icon: 'ti-books' },
     ],
   },
   {
@@ -182,7 +180,8 @@ export default function Sidebar({ open, activeView, setActiveView }) {
                 {isOpen && (
                   <div style={styles.subItems}>
                     {node.items.map(item => {
-                      const active = activeView === item.id
+                      // Training pages use ids like "academy-onboarding:<slug>", so the parent stays highlighted.
+                      const active = activeView === item.id || activeView.startsWith(item.id + ':')
                       const showAgentshipCount =
                         item.id === 'ch-agentship' && agentshipUnread > 0 && activeView !== 'ch-agentship'
                       return (
