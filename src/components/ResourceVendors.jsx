@@ -8,6 +8,8 @@ const CAT_ICON = {
   'Insurance': 'ti-shield-check',
   'Home Inspector': 'ti-search',
   'Home Warranty': 'ti-file-certificate',
+  'Cash Offer or Buy Before Selling': 'ti-cash',
+  'Moving Company': 'ti-truck',
 }
 const FALLBACK_ICON = 'ti-briefcase'
 
@@ -140,6 +142,13 @@ export default function ResourceVendors() {
                     <span style={styles.ellipsis}>{v.email}</span>
                   </a>
                 )}
+
+                {(v.links || []).filter(l => l && l.url).map((l, i) => (
+                  <a key={`link-${i}`} href={l.url} target="_blank" rel="noopener noreferrer" style={{ ...styles.row, ...styles.link }}>
+                    <i className={`ti ${l.icon || 'ti-external-link'}`} aria-hidden="true" style={styles.rowIcon} />
+                    <span style={styles.ellipsis}>{l.label || 'Link'}</span>
+                  </a>
+                ))}
 
                 {v.website_url && (
                   <a href={v.website_url} target="_blank" rel="noopener noreferrer" style={{ ...styles.row, ...styles.link }}>
