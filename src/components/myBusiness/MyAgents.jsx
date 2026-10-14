@@ -32,15 +32,18 @@ export default function MyAgents() {
     let alive = true
     ;(async () => {
       try {
-        const [{ map, profiles: pr }, g, r, d] = await Promise.all([
+        const [{ map, profiles: pr }, g, r, d, h] = await Promise.all([
           fubIdMap(),
           supabase.from('mb_plan_goals').select('*'),
           supabase.from('mb_plan_revisions').select('id,user_id,plan_year,changed_at,reason,before,after'),
           supabase.from('leaderboard_deals').select(DEAL_FIELDS),
+          // People kept off the roster (test accounts, founders who don't sell).
+          supabase.from('mb_roster_hidden').select('user_id'),
         ])
         for (const x of [g, r, d]) if (x.error) throw x.error
         if (!alive) return
-        setProfiles(pr); setIdMap(map); setGoals(g.data || []); setRevs(r.data || []); setDeals(d.data || [])
+        const hidden = new Set((h.data || []).map(x => x.user_id))
+        setProfiles(pr.filter(p => !hidden.has(p.id))); setIdMap(map); setGoals(g.data || []); setRevs(r.data || []); setDeals(d.data || [])
         setLoading(false)
       } catch (e) { if (alive) { setErr(e.message || String(e)); setLoading(false) } }
     })()
