@@ -3,7 +3,7 @@
 import { createPortal } from 'react-dom'
 import {
   CLARITY, PROTECTION, LBD, COL_DEFAULT, FUNNEL, ACT, STEPS, LOCKED_STEPS, STD_FUNNEL, ROYALTY, ZILLOW_FEE,
-  calc, nwTot, R, U, $f, $neg, num, uid, laneName,
+  calc, nwTot, R, U, $f, $neg, num, uid, laneName, MAX_RATE,
 } from '../../lib/myBusiness/calc'
 import { Private, Shared, Money, Pct, Text, Freq, LockIcon, fmtDate } from './ui'
 import { PlanPLRows, PlanHistory } from './LeaderCard'
@@ -255,9 +255,10 @@ export default function PlanSteps(props) {
         <div className="tbl-wrap"><table>
           <thead><tr><th>Conversion rate</th><th></th></tr></thead>
           <tbody>{FUNNEL.map(([key, , desc]) => (
-            <tr key={key}><td>{desc}</td><td><Pct style={{ display: 'inline-block' }} value={data.funnel[key]} onChange={v => set('funnel.' + key, v)} label={desc} /></td></tr>
+            <tr key={key}><td>{desc}</td><td><Pct style={{ display: 'inline-block' }} value={data.funnel[key]} onChange={v => { const max = MAX_RATE[key] ?? 100; set('funnel.' + key, num(v) > max ? String(max) : v) }} label={desc} /></td></tr>
           ))}</tbody>
         </table></div>
+        <p className="note">Under Contract to Closed can be up to 90%. Every other rate can be up to 100%.</p>
         <button type="button" className="add" onClick={() => update(d => { d.funnel = { ...STD_FUNNEL } })}>Reset to Agentship standards</button>
         <h2>What It Takes</h2>
         <div className="tbl-wrap"><table><thead><tr><th></th><th>This year</th><th>Each month</th><th>Each week</th></tr></thead><tbody><FunnelRows k={k} /></tbody></table></div>

@@ -69,6 +69,10 @@ export const $neg = n => (n > 0.5 ? '(' + $f(n) + ')' : '$0')
 export const R = n => Math.round(n)
 export const U = n => Math.ceil(n - 1e-9)
 export const filled = x => x !== undefined && x !== null && String(x).trim() !== ''
+// Highest rate allowed for each funnel step. Under Contract to Closed tops out
+// at 90% (Melissa, Oct 16, 2026): a rate set lower stays as the agent set it.
+export const MAX_RATE = { uc: 90 }
+export const capRate = (v, key) => Math.min(MAX_RATE[key] ?? 100, Math.max(0, num(v)))
 export const budgetMo = r => (r.f === 'yr' ? num(r.v) / 12 : num(r.v))
 export const budgetYr = r => (r.f === 'yr' ? num(r.v) : num(r.v) * 12)
 export const clone = o => JSON.parse(JSON.stringify(o))
@@ -150,11 +154,14 @@ export function calc(data) {
   const tx = blended > 0 && income > 0 ? Math.ceil(need / blended - 1e-9) : 0
   const breakEven = blended > 0 && (c + bizYr) > 0 ? Math.ceil((c + bizYr + kw) / blended - 1e-9) : 0
   const f = data.funnel, chain = { closed: tx }
-  chain.uc = tx / (num(f.uc) / 100 || 1)
-  chain.clients = chain.uc / (num(f.clients) / 100 || 1)
-  chain.met = chain.clients / (num(f.met) / 100 || 1)
-  chain.set = chain.met / (num(f.set) / 100 || 1)
-  chain.nurture = chain.set / (num(f.nurture) / 100 || 1)
+  // A conversion rate can't be above 100%; otherwise an earlier stage would
+  // need fewer people than a later one (fewer contracts than closings).
+  const r = key => capRate(f[key], key) / 100 || 1
+  chain.uc = tx / r('uc')
+  chain.clients = chain.uc / r('clients')
+  chain.met = chain.clients / r('met')
+  chain.set = chain.met / r('set')
+  chain.nurture = chain.set / r('nurture')
   const rated = data.clarity.filter(x => x > 0).length
   const score = rated ? Math.round(data.clarity.reduce((s, x) => s + x, 0) / 35 * 100) : null
   const plan = { gci: tx * gci, zfee: tx * zp * gci * ZILLOW_FEE, take: tx * blended }
@@ -242,7 +249,7 @@ export function summarize(data) {
   return {
     name: data.profile.name || '', division: data.profile.division,
     income: k.income, tx: k.tx, gci: k.plan.gci, volume: k.volume, breakEven: k.breakEven, blended: k.blended,
-    plan: k.plan, funnel: { ...data.funnel }, chain: k.chain, targets,
+    plan: k.plan, funnel: Object.fromEntries(Object.entries(data.funnel).map(([key, v]) => [key, capRate(v, key)])), chain: k.chain, targets,
     nurtures: nurturesOf(data),
     acc: { self: data.acc.self || '', leader: data.acc.leader || '' },
   }
