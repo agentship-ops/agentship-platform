@@ -4,7 +4,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/AuthContext'
-import { fubActuals, activityYtd, dealSum, monthActual, U, R, $f } from '../../lib/myBusiness/calc'
+import { fubActuals, activityYtd, dealSum, monthActual, U, R, $f, FIRST_PLAN_YEAR } from '../../lib/myBusiness/calc'
 import { fubIdMap, DEAL_FIELDS } from '../../lib/myBusiness/data'
 import LeaderCard from './LeaderCard'
 import { MonthSelect, PaceTag } from './ui'
@@ -15,7 +15,8 @@ const fullName = p => [p.first_name, p.last_name].filter(Boolean).join(' ') || '
 export default function MyAgents() {
   const { profile } = useAuth()
   const isAdmin = profile?.account_type === 'admin'
-  const now = new Date(), curY = now.getFullYear()
+  const now = new Date(), realY = now.getFullYear(), curY = Math.max(realY, FIRST_PLAN_YEAR)
+  const monthFor = y => (y < realY ? 11 : y > realY ? 0 : now.getMonth())
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState(null)
   const [profiles, setProfiles] = useState([])
@@ -24,7 +25,7 @@ export default function MyAgents() {
   const [revs, setRevs] = useState([])
   const [deals, setDeals] = useState([])
   const [year, setYear] = useState(curY)
-  const [thru, setThru] = useState(now.getMonth())
+  const [thru, setThru] = useState(monthFor(curY))
   const [sel, setSel] = useState(null)
   const [unlocked, setUnlocked] = useState(null)
 
@@ -50,8 +51,8 @@ export default function MyAgents() {
     return () => { alive = false }
   }, [])
 
-  const years = useMemo(() => [...new Set([curY, ...goals.map(g => g.plan_year)])].sort((a, b) => a - b), [goals, curY])
-  function changeYear(y) { setYear(y); setThru(y < curY ? 11 : y > curY ? 0 : now.getMonth()); setSel(null) }
+  const years = useMemo(() => [...new Set([curY, ...goals.map(g => g.plan_year)])].filter(y => y >= FIRST_PLAN_YEAR).sort((a, b) => a - b), [goals, curY])
+  function changeYear(y) { setYear(y); setThru(monthFor(y)); setSel(null) }
 
   const rows = useMemo(() => {
     const goalOf = {}; goals.filter(g => g.plan_year === year).forEach(g => { goalOf[g.user_id] = g })

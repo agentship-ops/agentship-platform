@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { useAuth } from '../../lib/AuthContext'
 import {
   defaults, clone, pathSet, calc, fubActuals, plSum, nwTot, nextYearData, yearReadOnly,
-  goalsRow, headline, summarize, sharedData, PLAN_KEYS,
+  goalsRow, headline, summarize, sharedData, PLAN_KEYS, FIRST_PLAN_YEAR,
 } from '../../lib/myBusiness/calc'
 import { loadMyPlans, loadDeals, fubIdMap, savePlan, addRevision } from '../../lib/myBusiness/data'
 import { downloadPlan } from '../../lib/myBusiness/pdf'
@@ -21,7 +21,11 @@ const defaultMonth = (year, now = new Date()) => (year < now.getFullYear() ? 11 
 export default function MyBusiness({ initialTab }) {
   const { user, profile } = useAuth()
   const now = new Date()
-  const curY = now.getFullYear(), nextY = curY + 1, octOpen = now.getMonth() >= 9
+  // curY is the agent's current plan year: this calendar year, but never
+  // earlier than the first year My Business supports.
+  const realY = now.getFullYear()
+  const curY = Math.max(realY, FIRST_PLAN_YEAR), nextY = realY + 1
+  const octOpen = now.getMonth() >= 9 && nextY > curY
   const fullName = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ')
 
   const [loading, setLoading] = useState(true)
@@ -53,7 +57,7 @@ export default function MyBusiness({ initialTab }) {
         const dl = await loadDeals(ids)
         if (!alive) return
         const P = {}
-        rows.forEach(r => { P[r.plan_year] = { data: { ...defaults(fullName), ...r.data }, committed_at: r.committed_at, unlocked: r.unlocked, exists: true } })
+        rows.filter(r => r.plan_year >= FIRST_PLAN_YEAR).forEach(r => { P[r.plan_year] = { data: { ...defaults(fullName), ...r.data }, committed_at: r.committed_at, unlocked: r.unlocked, exists: true } })
         if (!P[curY]) P[curY] = { data: freshData(P, curY, dl), committed_at: null, unlocked: false, exists: false }
         setPlans(P); setRevisions(revs); setDeals(dl)
         const cur = P[curY]

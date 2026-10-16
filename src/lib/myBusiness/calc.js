@@ -5,6 +5,9 @@
 // (leaderboard_deals); nurtures are the only activity an agent types in.
 
 export const ROYALTY = 3000
+// The first year agents can plan or track in My Business. Earlier years are
+// hidden everywhere (their saved data is kept, just not shown).
+export const FIRST_PLAN_YEAR = 2027
 export const ZILLOW_FEE = 0.40
 export const SPLITS = { program: { nz: 0.50, z: 0.50 }, collective: { nz: 0.70, z: 0.65 } }
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
