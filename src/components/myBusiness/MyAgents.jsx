@@ -30,6 +30,7 @@ export default function MyAgents() {
   const [thru, setThru] = useState(monthFor(curY))
   const [sel, setSel] = useState(null)
   const [unlocked, setUnlocked] = useState(null)
+  const [laneFilter, setLaneFilter] = useState('all')
 
   useEffect(() => {
     let alive = true
@@ -102,6 +103,13 @@ export default function MyAgents() {
         </select>
       </div>
       <MonthSelect label="Through month" value={thru} onChange={setThru} year={year} />
+      <div className="field"><label>Lane</label>
+        <select className="input" value={laneFilter} onChange={e => setLaneFilter(e.target.value)}>
+          <option value="all">All</option>
+          <option value="Collective">Collective</option>
+          <option value="Program">Program</option>
+        </select>
+      </div>
     </div>
   )
 
@@ -128,14 +136,20 @@ export default function MyAgents() {
   }
 
   const pending = notStarted(year)
+  // Show All, or only the Collective or Program lane. The list is grouped by
+  // lane (Collective, then Program), A to Z within each.
+  const byName = (a, b) => fullName(a.p).localeCompare(fullName(b.p))
+  const laneOf = r => laneLabel(r.p.division || r.s?.division || r.g?.lane)
+  const sorted = rows.filter(r => laneFilter === 'all' || laneOf(r) === laneFilter)
+    .sort((a, b) => laneOf(a).localeCompare(laneOf(b)) || byName(a, b))
   return (
     <div className="mb"><div className="wrap single"><div className="main">
       <p className="kicker">Leader view</p><h1>My Agents</h1>
-      <p className="lede">Everyone's business at a glance, with whoever is furthest behind at the top. Click a name to open their business plan.</p>
+      <p className="lede">Everyone's business at a glance, grouped by lane. Click a name to open their business plan.</p>
       {header}
       <div className="tbl-wrap"><table>
         <thead><tr><th>Agent</th><th>Lane</th><th>Closings YTD / plan</th><th>GCI YTD / plan</th><th>Appts set this month / goal</th><th>Pace</th></tr></thead>
-        <tbody>{rows.map(r => pending ? (
+        <tbody>{sorted.map(r => pending ? (
           // Before the plan year begins there is nothing to compare yet, so the
           // numbers stay blank; the agent's card still shows their full plan.
           <tr key={r.p.id}>
