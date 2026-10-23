@@ -7,7 +7,7 @@ import { useAuth } from '../../lib/AuthContext'
 import { fubActuals, activityYtd, dealSum, monthActual, U, R, $f, FIRST_PLAN_YEAR } from '../../lib/myBusiness/calc'
 import { fubIdMap, DEAL_FIELDS } from '../../lib/myBusiness/data'
 import LeaderCard from './LeaderCard'
-import { MonthSelect, PaceTag } from './ui'
+import { MonthSelect, PaceTag, notStarted } from './ui'
 import './mb.css'
 
 // The lane set on the person's profile wins; otherwise the lane they picked in their plan.
@@ -127,6 +127,7 @@ export default function MyAgents() {
     )
   }
 
+  const pending = notStarted(year)
   return (
     <div className="mb"><div className="wrap single"><div className="main">
       <p className="kicker">Leader view</p><h1>My Agents</h1>
@@ -134,7 +135,15 @@ export default function MyAgents() {
       {header}
       <div className="tbl-wrap"><table>
         <thead><tr><th>Agent</th><th>Lane</th><th>Closings YTD / plan</th><th>GCI YTD / plan</th><th>Appts set this month / goal</th><th>Pace</th></tr></thead>
-        <tbody>{rows.map(r => (
+        <tbody>{rows.map(r => pending ? (
+          // Before the plan year begins there is nothing to compare yet, so the
+          // numbers stay blank; the agent's card still shows their full plan.
+          <tr key={r.p.id}>
+            <td><button type="button" className="linkbtn" onClick={() => setSel(r.p.id)}>{fullName(r.p)}</button></td>
+            <td>{laneLabel(r.p.division || r.s?.division || r.g?.lane)}</td><td>—</td><td>—</td><td>—</td>
+            <td>{r.noPlan ? <span className="tag">No plan yet</span> : <PaceTag year={year} />}</td>
+          </tr>
+        ) : (
           <tr key={r.p.id}>
             <td><button type="button" className="linkbtn" onClick={() => { setSel(r.p.id); setThru(thru) }}>{fullName(r.p)}</button></td>
             {r.noPlan ? (
