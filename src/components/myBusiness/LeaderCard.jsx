@@ -91,7 +91,7 @@ export default function LeaderCard({ s, act, revisions, committedAt, year, thru,
         <div><span>Income goal</span><b>{$f(s.income)}</b></div>
         <div><span>Transaction goal</span><b>{s.tx || '—'}</b></div>
         <div><span>GCI goal</span><b>{$f(s.gci)}</b></div>
-        <div><span>Closings YTD</span><b>{R(ytd.closed)} <PaceTag on={on} /></b></div>
+        <div><span>Closings YTD</span><b>{R(ytd.closed)} <PaceTag on={on} year={year} /></b></div>
       </div>
       {children}
       <div style={{ marginTop: 20 }}><MonthSelect label="Through month" value={thru} onChange={setThru} year={year} /></div>
@@ -101,8 +101,8 @@ export default function LeaderCard({ s, act, revisions, committedAt, year, thru,
       <div className="tbl-wrap"><table>
         <thead><tr><th></th><th>Actual YTD</th><th>Plan to date</th><th>Full-year plan</th><th></th></tr></thead>
         <tbody>
-          <tr><td>Gross commission (GCI)</td><td>{$f(inc.gci)}</td><td>{$f(pg)}</td><td>{$f(s.plan.gci)}</td><td><PaceTag on={ok(inc.gci, pg)} /></td></tr>
-          <tr className="key"><td>Commission income (after Zillow and split)</td><td>{$f(inc.take)}</td><td>{$f(pt)}</td><td>{$f(s.plan.take)}</td><td><PaceTag on={ok(inc.take, pt)} /></td></tr>
+          <tr><td>Gross commission (GCI)</td><td>{$f(inc.gci)}</td><td>{$f(pg)}</td><td>{$f(s.plan.gci)}</td><td><PaceTag on={ok(inc.gci, pg)} year={year} /></td></tr>
+          <tr className="key"><td>Commission income (after Zillow and split)</td><td>{$f(inc.take)}</td><td>{$f(pt)}</td><td>{$f(s.plan.take)}</td><td><PaceTag on={ok(inc.take, pt)} year={year} /></td></tr>
         </tbody>
       </table></div>
 

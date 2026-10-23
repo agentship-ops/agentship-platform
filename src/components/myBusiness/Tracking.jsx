@@ -36,7 +36,7 @@ export function GoalTracker({ data, set, act, thru, setThru, year, goTab, readOn
               : <span title="From Follow Up Boss">{monthActual(a, thru, nurtures, act)}</span>
             return (
               <tr key={a}><td>{l}</td><td>{cell}</td><td>{R(ytd[a])}</td><td>{U(target)}</td>
-                <td><div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end' }}><div className="bar"><i style={{ width: pct + '%' }} /></div><PaceTag on={ahead} /></div></td></tr>
+                <td><div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end' }}><div className="bar"><i style={{ width: pct + '%' }} /></div><PaceTag on={ahead} year={year} /></div></td></tr>
             )
           })}</tbody>
         </table></div>
@@ -69,7 +69,7 @@ export function PL({ data, set, update, act, month: m, setMonth, year, goStep, r
       <div className="kv" style={{ marginBottom: 8 }}>
         <div><span>Net profit year to date</span><b>{$f(ytd.net)}</b></div>
         <div><span>Income goal pace</span><b>{$f(goalPace)}</b></div>
-        <div><span>Status</span><b><PaceTag on={on}>{k.income > 0 ? (on ? 'On pace' : 'Behind') : 'Finish your plan'}</PaceTag></b></div>
+        <div><span>Status</span><b><PaceTag on={on} year={k.income > 0 ? year : null}>{k.income > 0 ? (on ? 'On pace' : 'Behind') : 'Finish your plan'}</PaceTag></b></div>
         <div><span>Profit margin</span><b>{margin(ytd)}</b></div>
       </div>
       <LineChart labels={MONTHS.slice(0, m + 1)}

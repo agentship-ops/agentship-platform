@@ -75,7 +75,9 @@ export default function MyBusiness({ initialTab }) {
   function freshData(P, y, dl) {
     const earlier = Object.keys(P).map(Number).filter(v => v < y && P[v].exists).sort((a, b) => b - a)[0]
     if (earlier) return nextYearData(P[earlier].data, earlier, fubActuals(dl, earlier), fullName)
-    return defaults(fullName)
+    const d = defaults(fullName)
+    if (profile?.division) d.profile.division = profile.division  // start new plans in the lane on their profile
+    return d
   }
 
   /* ---------- save ---------- */

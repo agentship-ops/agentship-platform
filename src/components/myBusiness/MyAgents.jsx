@@ -10,6 +10,8 @@ import LeaderCard from './LeaderCard'
 import { MonthSelect, PaceTag } from './ui'
 import './mb.css'
 
+// The lane set on the person's profile wins; otherwise the lane they picked in their plan.
+const laneLabel = l => (l === 'program' ? 'Program' : l === 'collective' ? 'Collective' : '—')
 const fullName = p => [p.first_name, p.last_name].filter(Boolean).join(' ') || 'Unnamed'
 
 export default function MyAgents() {
@@ -111,7 +113,7 @@ export default function MyAgents() {
         {current.noPlan ? (
           <p className="lede">No locked-in plan for {year} yet. This is a good one to follow up on after the clinic.</p>
         ) : (
-          <LeaderCard s={{ ...current.s, name: fullName(current.p) }} act={current.act} year={year} thru={thru} setThru={setThru}
+          <LeaderCard s={{ ...current.s, name: fullName(current.p), division: current.p.division || current.s.division }} act={current.act} year={year} thru={thru} setThru={setThru}
             revisions={revs.filter(r => r.user_id === current.p.id && r.plan_year === year)} committedAt={current.g.committed_at}>
             {isAdmin && year < curY && unlocked != null && (
               <div className="banner flex" style={{ marginTop: 16, marginBottom: 0 }}>
@@ -136,11 +138,11 @@ export default function MyAgents() {
           <tr key={r.p.id}>
             <td><button type="button" className="linkbtn" onClick={() => { setSel(r.p.id); setThru(thru) }}>{fullName(r.p)}</button></td>
             {r.noPlan ? (
-              <><td>{r.g?.lane === 'program' ? 'Program' : r.g?.lane === 'collective' ? 'Collective' : '—'}</td><td>{r.act.months.slice(0, thru + 1).reduce((s, m) => s + m.closed, 0)} / —</td><td>—</td><td>{r.act.months[thru].set} / —</td><td><span className="tag">No plan yet</span></td></>
+              <><td>{laneLabel(r.p.division || r.g?.lane)}</td><td>{r.act.months.slice(0, thru + 1).reduce((s, m) => s + m.closed, 0)} / —</td><td>—</td><td>{r.act.months[thru].set} / —</td><td><span className="tag">No plan yet</span></td></>
             ) : (
-              <><td>{r.s.division === 'program' ? 'Program' : 'Collective'}</td>
+              <><td>{laneLabel(r.p.division || r.s.division)}</td>
                 <td>{R(r.ytd.closed)} / {U(r.cT)}</td><td>{$f(r.inc.gci)} / {$f(r.gT)}</td><td>{r.setAct} / {r.setGoal}</td>
-                <td><PaceTag on={r.onAll} /></td></>
+                <td><PaceTag on={r.onAll} year={year} /></td></>
             )}
           </tr>
         ))}</tbody>

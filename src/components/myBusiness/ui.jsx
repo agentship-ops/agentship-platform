@@ -55,7 +55,12 @@ export function Seg({ value, onChange, options }) {
     </div>
   )
 }
-export const PaceTag = ({ on, children }) => <span className={'tag' + (on ? ' ahead' : '')}>{children ?? (on ? 'On pace' : 'Behind')}</span>
+// Before a plan year begins there is nothing to be behind on yet, so the tag
+// says when tracking starts instead of "Behind".
+export const notStarted = year => year > new Date().getFullYear()
+export const PaceTag = ({ on, children, year }) => (year && notStarted(year)
+  ? <span className="tag">Starts Jan 1</span>
+  : <span className={'tag' + (on ? ' ahead' : '')}>{children ?? (on ? 'On pace' : 'Behind')}</span>)
 
 // Line chart (ported from the prototype's lineChart).
 export function LineChart({ labels, series, legend, count }) {

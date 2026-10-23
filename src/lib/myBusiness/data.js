@@ -8,7 +8,7 @@ export const DEAL_FIELDS = 'fub_deal_id,owner_fub_user_id,side,price,total_commi
 export async function fubIdMap() {
   const [{ data: la }, { data: pr }] = await Promise.all([
     supabase.from('leaderboard_agents').select('fub_user_id,profile_id'),
-    supabase.from('profiles').select('id,first_name,last_name,account_type,fub_user_id'),
+    supabase.from('profiles').select('id,first_name,last_name,account_type,fub_user_id,division'),
   ])
   const map = {}
   ;(la || []).forEach(r => { if (r.profile_id) (map[r.profile_id] = map[r.profile_id] || []).push(Number(r.fub_user_id)) })
