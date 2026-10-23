@@ -2,10 +2,9 @@
 // READ-ONLY against Follow Up Boss. Writes only to leaderboard_nurtures.
 // A nurture = a call 90 seconds or longer, OR a logged call whose note contains "nurture".
 // Each qualifying call is stored with its lead; the board counts distinct leads per period.
-// Runs one date window at a time so it stays fast on the free plan.
+// Uses Follow Up Boss date filters so any window loads directly, no paging through everything.
 //
-// Run it:  /api/sync-nurtures?token=YOUR_TOKEN
-// Backfill a month:  /api/sync-nurtures?token=YOUR_TOKEN&since=2026-01-01&until=2026-01-31
+// Run it:  /api/sync-nurtures?token=YOUR_TOKEN&since=2026-01-01&until=2026-03-31
 // With no dates it does the current month.
 
 export default async function handler(req, res) {
@@ -29,6 +28,9 @@ export default async function handler(req, res) {
     const until = (req.query.until || today).slice(0, 10);
     if (since < '2026-01-01') { return res.status(400).json({ error: 'since cannot be earlier than 2026-01-01' }); }
 
+    const createdAfter  = since + 'T00:00:00Z';
+    const createdBefore = until + 'T23:59:59Z';
+
     const auth = 'Basic ' + Buffer.from(fubKey + ':').toString('base64');
     const base = 'https://api.followupboss.com/v1/';
     async function fubGet(path) {
@@ -40,18 +42,14 @@ export default async function handler(req, res) {
     const rows = [];
     const usersSeen = {};
     let scanned = 0, dialer = 0, logged = 0, pages = 0, capHit = false;
-    let path = 'calls?limit=100&sort=-created';
+    let path = 'calls?limit=100&createdAfter=' + encodeURIComponent(createdAfter) + '&createdBefore=' + encodeURIComponent(createdBefore);
     while (path) {
-      if (pages >= 40) { capHit = true; break; }
+      if (pages >= 30) { capHit = true; break; }
       const data = await fubGet(path);
       const calls = (data && data.calls) || [];
-      let allOlder = calls.length > 0;
       for (const c of calls) {
-        const cdate = String(c.created || c.startedAt || '').slice(0, 10);
-        if (!cdate) continue;
-        if (cdate >= since) allOlder = false;
-        if (cdate < since) continue;      // past the window (sorted newest first)
-        if (cdate > until) continue;      // not yet into the window
+        const cdate = String(c.startedAt || c.created || '').slice(0, 10);
+        if (cdate && (cdate < since || cdate > until)) continue; // defensive, in case a param is ignored
         scanned++;
         if (c.userId && c.userName) usersSeen[c.userId] = c.userName;
         const owner = c.userId || null;
@@ -71,7 +69,6 @@ export default async function handler(req, res) {
         });
       }
       pages++;
-      if (allOlder) break;              // whole page older than the window
       const next = data && data._metadata && data._metadata.nextLink;
       path = next ? next.replace(base, '') : null;
     }
