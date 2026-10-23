@@ -31,6 +31,7 @@ export default function MyAgents() {
   const [sel, setSel] = useState(null)
   const [unlocked, setUnlocked] = useState(null)
   const [laneFilter, setLaneFilter] = useState('all')
+  const [sort, setSort] = useState({ key: 'lane', dir: 1 })
 
   useEffect(() => {
     let alive = true
@@ -140,15 +141,34 @@ export default function MyAgents() {
   // lane (Collective, then Program), A to Z within each.
   const byName = (a, b) => fullName(a.p).localeCompare(fullName(b.p))
   const laneOf = r => laneLabel(r.p.division || r.s?.division || r.g?.lane)
+  // Click a column heading to sort by it; click again to flip the order.
+  // Ties fall back to the agent's name.
+  const closedYtd = r => (r.noPlan ? r.act.months.slice(0, thru + 1).reduce((t, m) => t + m.closed, 0) : r.ytd.closed)
+  const paceRank = r => (r.noPlan ? 0 : pending ? 2 : r.onAll ? 3 : 1)  // No plan, Behind, Starts Jan 1, On pace
+  const SORT = {
+    name: (a, b) => byName(a, b),
+    lane: (a, b) => laneOf(a).localeCompare(laneOf(b)),
+    closings: (a, b) => closedYtd(a) - closedYtd(b),
+    gci: (a, b) => (a.inc?.gci || 0) - (b.inc?.gci || 0),
+    appts: (a, b) => (a.noPlan ? a.act.months[thru].set : a.setAct) - (b.noPlan ? b.act.months[thru].set : b.setAct),
+    pace: (a, b) => paceRank(a) - paceRank(b),
+  }
   const sorted = rows.filter(r => laneFilter === 'all' || laneOf(r) === laneFilter)
-    .sort((a, b) => laneOf(a).localeCompare(laneOf(b)) || byName(a, b))
+    .sort((a, b) => sort.dir * SORT[sort.key](a, b) || byName(a, b))
+  const sortTh = (key, label) => (
+    <th aria-sort={sort.key === key ? (sort.dir > 0 ? 'ascending' : 'descending') : 'none'}>
+      <button type="button" className="th-sort" onClick={() => setSort(s => ({ key, dir: s.key === key ? -s.dir : 1 }))}>
+        {label}<span aria-hidden="true">{sort.key === key ? (sort.dir > 0 ? ' ▲' : ' ▼') : ''}</span>
+      </button>
+    </th>
+  )
   return (
     <div className="mb"><div className="wrap single"><div className="main">
       <p className="kicker">Leader view</p><h1>My Agents</h1>
-      <p className="lede">Everyone's business at a glance, grouped by lane. Click a name to open their business plan.</p>
+      <p className="lede">Everyone's business at a glance. Click a column heading to sort by it, or a name to open their business plan.</p>
       {header}
       <div className="tbl-wrap"><table>
-        <thead><tr><th>Agent</th><th>Lane</th><th>Closings YTD / plan</th><th>GCI YTD / plan</th><th>Appts set this month / goal</th><th>Pace</th></tr></thead>
+        <thead><tr>{sortTh('name', 'Agent')}{sortTh('lane', 'Lane')}{sortTh('closings', 'Closings YTD / plan')}{sortTh('gci', 'GCI YTD / plan')}{sortTh('appts', 'Appts set this month / goal')}{sortTh('pace', 'Pace')}</tr></thead>
         <tbody>{sorted.map(r => pending ? (
           // Before the plan year begins there is nothing to compare yet, so the
           // numbers stay blank; the agent's card still shows their full plan.
