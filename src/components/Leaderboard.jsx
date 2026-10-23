@@ -1,15 +1,16 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 
-// Metrics (Conversations removed for launch; funnel starts at Appointments Set)
-const METRICS = ['Appointments Set', 'Appointments Met', 'Signed', 'Under Contract', 'Closed', 'Sales Volume', 'GCI']
-const FIELD = ['appt_set_date', 'appt_met_date', 'signed_date', 'under_contract_date', 'closed_date', 'closed_date', 'closed_date']
-const BENCH = [null, 0.5, 0.5, 0.75, 0.9, null, null]
-const BENCH_SHORT = [null, 'Set to Met', 'Met to Signed', 'Signed to Under Contract', 'Under Contract to Closed', null, null]
-const isMoney = (m) => m >= 5
+// Nurtures sits at the top of the funnel (distinct leads with a qualifying conversation).
+const METRICS = ['Nurtures', 'Appointments Set', 'Appointments Met', 'Signed', 'Under Contract', 'Closed', 'Sales Volume', 'GCI']
+const FIELD = [null, 'appt_set_date', 'appt_met_date', 'signed_date', 'under_contract_date', 'closed_date', 'closed_date', 'closed_date']
+const BENCH = [null, 0.25, 0.5, 0.5, 0.75, 0.9, null, null]
+const BENCH_SHORT = [null, 'Nurture to Set', 'Set to Met', 'Met to Signed', 'Signed to Under Contract', 'Under Contract to Closed', null, null]
+const isMoney = (m) => m >= 6
 const FLOOR = '2026-01-01'
 const GOLD = '#C9A84C'
 const TIMEFRAMES = ['Today', 'Yesterday', 'This Week', 'Last Week', 'This Month', 'Last Month', 'This Quarter', 'Q1', 'Q2', 'Q3', 'Q4', 'This Year', 'Last Year', 'All Time']
+const LOCATIONS = ['All Locations', 'Georgia', 'Florida']
 
 function ymd(d) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
@@ -23,7 +24,7 @@ function rangeFor(tf) {
   else if (tf === 'This Week') { const off = (now.getDay() + 6) % 7; start = ymd(dayShift(-off)) }
   else if (tf === 'Last Week') { const off = (now.getDay() + 6) % 7; start = ymd(dayShift(-off - 7)); end = ymd(dayShift(-off - 1)) }
   else if (tf === 'This Month') { start = y + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-01' }
-  else if (tf === 'Last Month') { const d = new Date(y, now.getMonth(), 1); const s = new Date(y, now.getMonth() - 1, 1); const e = new Date(y, now.getMonth(), 0); start = ymd(s); end = ymd(e) }
+  else if (tf === 'Last Month') { const s = new Date(y, now.getMonth() - 1, 1); const e = new Date(y, now.getMonth(), 0); start = ymd(s); end = ymd(e) }
   else if (tf === 'This Quarter') { const q = Math.floor(now.getMonth() / 3); start = y + '-' + String(q * 3 + 1).padStart(2, '0') + '-01' }
   else if (tf === 'Q1') { start = y + '-01-01'; end = y + '-03-31' }
   else if (tf === 'Q2') { start = y + '-04-01'; end = y + '-06-30' }
@@ -38,6 +39,7 @@ function rangeFor(tf) {
 
 export default function Leaderboard() {
   const [deals, setDeals] = useState([])
+  const [nurtures, setNurtures] = useState([])
   const [agents, setAgents] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState(null)
@@ -47,18 +49,22 @@ export default function Leaderboard() {
   const [view, setView] = useState('bar')
   const [showBm, setShowBm] = useState(true)
   const [tf, setTf] = useState('This Year')
+  const [loc, setLoc] = useState('All Locations')
 
   useEffect(() => {
     let alive = true
     ;(async () => {
       try {
-        const a = await supabase.from('leaderboard_agents').select('fub_user_id,display_name,color,active').eq('active', true)
+        const a = await supabase.from('leaderboard_agents').select('fub_user_id,display_name,color,active,location').eq('active', true)
         const d = await supabase.from('leaderboard_deals').select('owner_fub_user_id,side,price,agent_gci,appt_set_date,appt_met_date,signed_date,under_contract_date,closed_date')
+        const n = await supabase.from('leaderboard_nurtures').select('owner_fub_user_id,person_id,nurture_date')
         if (!alive) return
         if (a.error) throw a.error
         if (d.error) throw d.error
+        if (n.error) throw n.error
         setAgents(a.data || [])
         setDeals(d.data || [])
+        setNurtures(n.data || [])
         setLoading(false)
       } catch (e) {
         if (alive) { setErr(e.message || String(e)); setLoading(false) }
@@ -69,8 +75,8 @@ export default function Leaderboard() {
 
   const html = useMemo(() => {
     if (loading || err) return ''
-    return buildViz(deals, agents, { show, metricSel, view, showBm, tf })
-  }, [deals, agents, show, metricSel, view, showBm, tf, loading, err])
+    return buildViz(deals, nurtures, agents, { show, metricSel, view, showBm, tf, loc })
+  }, [deals, nurtures, agents, show, metricSel, view, showBm, tf, loc, loading, err])
 
   const isAgent = show === 'agent'
 
@@ -94,6 +100,11 @@ export default function Leaderboard() {
             <select value={show} onChange={(e) => setShow(e.target.value)} style={sel}>
               <option value="agent">Agents</option>
               <option value="agentship">Agentship</option>
+            </select>
+          </span>
+          <span><label style={lbl}>Location</label>
+            <select value={loc} onChange={(e) => setLoc(e.target.value)} style={sel}>
+              {LOCATIONS.map((l) => <option key={l} value={l}>{l}</option>)}
             </select>
           </span>
           {isAgent && (
@@ -136,24 +147,38 @@ const sel = { background: '#0A0A0A', border: '0.5px solid #333', color: '#fff', 
 const lbl = { fontSize: 11, color: '#888', marginRight: 4 }
 
 // ---------- pure rendering (returns HTML strings) ----------
-function buildViz(deals, agents, s) {
+function buildViz(deals, nurtures, agents, s) {
   const [start, end] = rangeFor(s.tf)
-  const gtint = (k) => k === 4 ? GOLD : 'rgba(201,168,76,' + (0.34 + k * 0.12).toFixed(2) + ')'
+  const gtint = (k) => k === 5 ? GOLD : 'rgba(201,168,76,' + (0.26 + k * 0.12).toFixed(2) + ')'
   const num = (v) => { const n = Number(v); return isNaN(n) ? 0 : n }
   const fmt = (v, m) => isMoney(m) ? (v >= 1e6 ? '$' + (v / 1e6).toFixed(1) + 'M' : '$' + Math.round(v / 1000) + 'k') : ('' + v)
+
+  const locName = s.loc === 'All Locations' ? null : s.loc
+  const shownAgents = locName ? agents.filter((a) => a.location === locName) : agents
+  const locOwnerIds = {}
+  for (const a of shownAgents) locOwnerIds[a.fub_user_id] = true
 
   const byOwner = {}
   for (const d of deals) { const o = d.owner_fub_user_id; (byOwner[o] = byOwner[o] || []).push(d) }
 
-  function value(subset, m) {
+  function dealValue(subset, m) {
     const f = FIELD[m]; let c = 0, sum = 0
-    for (const d of subset) { const dt = d[f]; if (dt && dt >= start && dt <= end) { c++; if (m === 5) sum += num(d.price); if (m === 6) sum += num(d.agent_gci) } }
-    return m >= 5 ? sum : c
+    for (const d of subset) { const dt = d[f]; if (dt && dt >= start && dt <= end) { c++; if (m === 6) sum += num(d.price); if (m === 7) sum += num(d.agent_gci) } }
+    return m >= 6 ? sum : c
   }
-  const aVal = (ag, m) => value(byOwner[ag.fub_user_id] || [], m)
-  const tVal = (m) => value(deals, m)
+  function nurtureLeads(ownerOk) {
+    const seen = {}
+    for (const n of nurtures) { if (n.nurture_date >= start && n.nurture_date <= end && ownerOk(n.owner_fub_user_id)) seen[n.person_id] = true }
+    return Object.keys(seen).length
+  }
+
+  const aVal = (ag, m) => m === 0 ? nurtureLeads((o) => o === ag.fub_user_id) : dealValue(byOwner[ag.fub_user_id] || [], m)
+  const tVal = (m) => {
+    if (m === 0) return locName ? nurtureLeads((o) => locOwnerIds[o]) : nurtureLeads(() => true)
+    return locName ? dealValue(deals.filter((d) => locOwnerIds[d.owner_fub_user_id]), m) : dealValue(deals, m)
+  }
   const conv = (ag, m) => { if (BENCH[m] == null) return null; const p = aVal(ag, m - 1); return p > 0 ? Math.round(aVal(ag, m) / p * 100) : 0 }
-  const ranked = (m) => agents.map((a) => ({ a, v: aVal(a, m) })).sort((x, y) => y.v - x.v)
+  const ranked = (m) => shownAgents.map((a) => ({ a, v: aVal(a, m) })).sort((x, y) => y.v - x.v)
   const pill = (ag, m) => { if (!s.showBm || BENCH[m] == null) return ''; const c = conv(ag, m), bp = Math.round(BENCH[m] * 100), col = c >= bp ? '#6ec46e' : '#e07070'; return '<span style="color:' + col + ';font-weight:700">' + (c >= bp ? '\u25B2' : '\u25BC') + ' ' + c + '%</span>' }
   const convLeg = (ag, m) => { if (!s.showBm || BENCH[m] == null) return '<span style="width:52px;display:inline-block"></span>'; const c = conv(ag, m), bp = Math.round(BENCH[m] * 100), col = c >= bp ? '#6ec46e' : '#e07070'; return '<span style="width:52px;text-align:right;color:' + col + ';font-weight:700;font-size:11px;display:inline-block">' + (c >= bp ? '\u25B2' : '\u25BC') + ' ' + c + '%</span>' }
 
@@ -191,31 +216,33 @@ function buildViz(deals, agents, s) {
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="display:block">' + yax + lines + '</svg><div style="margin-top:8px">' + leg + '</div>'
   }
   const chart = (m, cp) => s.view === 'bar' ? bar(m, cp) : s.view === 'column' ? column(m, cp) : s.view === 'pie' ? pie(m, cp) : line(m, cp)
+  const noteFor = (m) => m === 0 ? ' <span style="font-size:8.5px;color:#777;font-weight:500">calls through Follow Up Boss</span>' : m === 7 ? ' <span style="font-size:8.5px;color:#777;font-weight:500">net after splits &amp; referrals</span>' : ''
 
-  if (!agents.length) return '<div style="color:#666;font-size:13px;text-align:center;padding:40px">No agents on the board yet.</div>'
+  if (!shownAgents.length) return '<div style="color:#666;font-size:13px;text-align:center;padding:40px">No agents in this location yet.</div>'
 
   if (s.show === 'agent') {
     if (s.metricSel === 'all') {
-      const boxes = METRICS.map((name, m) => '<div style="background:#181818;border:0.5px solid #242424;border-radius:10px;padding:14px 15px"><div style="font-size:12px;font-weight:700;color:' + GOLD + ';margin-bottom:12px">' + name + (m === 6 ? ' <span style="font-size:8.5px;color:#777;font-weight:500">net after splits &amp; referrals</span>' : '') + '</div>' + chart(m, true) + '</div>').join('')
+      const boxes = METRICS.map((name, m) => '<div style="background:#181818;border:0.5px solid #242424;border-radius:10px;padding:14px 15px"><div style="font-size:12px;font-weight:700;color:' + GOLD + ';margin-bottom:12px">' + name + noteFor(m) + '</div>' + chart(m, true) + '</div>').join('')
       return '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px">' + boxes + '</div>'
     }
     const m = Number(s.metricSel)
-    return '<div style="font-size:13px;font-weight:600;margin-bottom:16px">' + METRICS[m] + ' · agents ranked</div>' + chart(m, false)
+    return '<div style="font-size:13px;font-weight:600;margin-bottom:16px">' + METRICS[m] + ' · agents ranked' + (m === 0 ? ' <span style="font-size:10px;color:#777;font-weight:400">· calls through Follow Up Boss</span>' : '') + '</div>' + chart(m, false)
   }
 
-  // Agentship: company funnel + Sales Volume + Units (all owners count)
-  const st = [0, 1, 2, 3, 4], t = st.map((k) => tVal(k)), mx = Math.max.apply(null, t.concat([1]))
+  // Agentship: company funnel (Nurtures -> Closed) + Sales Volume + Units
+  const st = [0, 1, 2, 3, 4, 5], t = st.map((k) => tVal(k)), mx = Math.max.apply(null, t.concat([1]))
   const rows = st.map((k, idx) => {
-    const topW = Math.max(t[idx] / mx * 100, 5), botW = Math.max(idx < 4 ? t[idx + 1] / mx * 100 : t[idx] / mx * 100 * 0.7, 4)
+    const topW = Math.max(t[idx] / mx * 100, 5), botW = Math.max(idx < 5 ? t[idx + 1] / mx * 100 : t[idx] / mx * 100 * 0.7, 4)
     const cp = 'polygon(' + ((100 - topW) / 2).toFixed(1) + '% 0,' + ((100 + topW) / 2).toFixed(1) + '% 0,' + ((100 + botW) / 2).toFixed(1) + '% 100%,' + ((100 - botW) / 2).toFixed(1) + '% 100%)'
     let convTxt = '<div style="width:150px;flex-shrink:0"></div>'
     if (idx > 0 && s.showBm) { const actual = t[idx - 1] > 0 ? Math.round(t[idx] / t[idx - 1] * 100) : 0; const bp = Math.round(BENCH[k] * 100); const col = actual >= bp ? '#6ec46e' : '#e07070'; convTxt = '<div style="width:150px;flex-shrink:0;text-align:right;font-size:10px;color:' + col + '">' + actual + '% vs ' + bp + '% standard</div>' }
-    return '<div style="display:flex;align-items:center;gap:12px"><div style="width:150px;text-align:right;font-size:12px;color:#bbb;flex-shrink:0">' + METRICS[k] + '</div><div style="flex:1;position:relative;height:44px"><div style="position:absolute;inset:0;clip-path:' + cp + ';background:' + gtint(idx) + '"></div></div><div style="width:80px;flex-shrink:0;font-size:16px;font-weight:700">' + t[idx] + '</div>' + convTxt + '</div>'
+    return '<div style="display:flex;align-items:center;gap:12px"><div style="width:150px;text-align:right;font-size:12px;color:#bbb;flex-shrink:0">' + METRICS[k] + '</div><div style="flex:1;position:relative;height:40px"><div style="position:absolute;inset:0;clip-path:' + cp + ';background:' + gtint(idx) + '"></div></div><div style="width:80px;flex-shrink:0;font-size:16px;font-weight:700">' + t[idx] + '</div>' + convTxt + '</div>'
   }).join('')
-  const vol = tVal(5), units = tVal(4)
+  const vol = tVal(6), units = tVal(5)
   const cards = '<div style="display:flex;gap:14px;margin-top:22px;flex-wrap:wrap">' +
-    '<div style="flex:1;min-width:200px;background:#181818;border:0.5px solid #242424;border-radius:12px;padding:20px;text-align:center"><div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.7px">Total Sales Volume</div><div style="font-size:30px;font-weight:700;color:' + GOLD + ';margin-top:6px">' + fmt(vol, 5) + '</div></div>' +
+    '<div style="flex:1;min-width:200px;background:#181818;border:0.5px solid #242424;border-radius:12px;padding:20px;text-align:center"><div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.7px">Total Sales Volume</div><div style="font-size:30px;font-weight:700;color:' + GOLD + ';margin-top:6px">' + fmt(vol, 6) + '</div></div>' +
     '<div style="flex:1;min-width:200px;background:#181818;border:0.5px solid #242424;border-radius:12px;padding:20px;text-align:center"><div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:0.7px">Units</div><div style="font-size:30px;font-weight:700;color:' + GOLD + ';margin-top:6px">' + units + '</div></div>' +
     '</div>'
-  return '<div style="font-size:13px;font-weight:600;margin-bottom:16px">Agentship as a whole · ' + s.tf + '</div><div style="display:flex;flex-direction:column;gap:2px">' + rows + '</div>' + cards + (s.showBm ? '<div style="font-size:10.5px;color:#777;margin-top:14px">Percent beside each stage is the team’s conversion into it versus the industry standard.</div>' : '')
+  const scope = locName ? locName : 'all locations'
+  return '<div style="font-size:13px;font-weight:600;margin-bottom:16px">Agentship as a whole · ' + scope + ' · ' + s.tf + '</div><div style="display:flex;flex-direction:column;gap:2px">' + rows + '</div>' + cards + (s.showBm ? '<div style="font-size:10.5px;color:#777;margin-top:14px">Percent beside each stage is the team’s conversion into it versus the industry standard.</div>' : '')
 }
