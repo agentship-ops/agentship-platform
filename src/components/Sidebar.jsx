@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import AcademyNav from './AcademyNav'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
+import { workspaceOf, canOpen, LEADER_NAV, HQ_NAV } from '../lib/workspaces'
 
 const NAV = [
   {
@@ -32,7 +33,6 @@ const NAV = [
       { id: 'command', label: 'Command Center', icon: 'ti-layout-dashboard' },
       { id: 'atlas', label: 'Atlas', icon: 'ti-robot' },
       { id: 'mybusiness', label: 'My Business', icon: 'ti-briefcase' },
-      { id: 'myagents', label: 'My Agents', icon: 'ti-users-group', roles: ['leader', 'admin'] },
     ],
   },
   {
@@ -136,7 +136,14 @@ export default function Sidebar({ open, activeView, setActiveView }) {
       transition: 'width 0.2s ease, min-width 0.2s ease',
     }}>
       <nav style={styles.nav}>
-        {NAV.map(node => {
+        {workspaceOf(activeView) !== 'platform' && canOpen(profile, workspaceOf(activeView)) ? (
+          <WorkspaceNav
+            label={workspaceOf(activeView) === 'hq' ? 'Headquarters' : 'Leader Portal'}
+            items={workspaceOf(activeView) === 'hq' ? HQ_NAV : LEADER_NAV}
+            activeView={activeView}
+            setActiveView={setActiveView}
+          />
+        ) : NAV.map(node => {
           if (node.type === 'divider') {
             return <div key={node.id} style={styles.divider} />
           }
@@ -226,7 +233,58 @@ export default function Sidebar({ open, activeView, setActiveView }) {
   )
 }
 
+// The Leader Portal and Headquarters sidebars: one flat list per workspace.
+function WorkspaceNav({ label, items, activeView, setActiveView }) {
+  return (
+    <>
+      <div style={styles.wsLabel}>{label}</div>
+      {items.map(item => {
+        const active = activeView === item.id
+        return (
+          <button
+            key={item.id}
+            onClick={() => setActiveView(item.id)}
+            style={{
+              ...styles.wsItem,
+              ...(active ? styles.standaloneActive : {}),
+            }}
+          >
+            <i className={`ti ${item.icon}`} aria-hidden="true" style={{ fontSize: '18px', color: '#C9A84C', flexShrink: 0 }} />
+            <span style={{ color: active ? '#C9A84C' : '#ffffff' }}>{item.label}</span>
+          </button>
+        )
+      })}
+    </>
+  )
+}
+
 const styles = {
+  wsLabel: {
+    fontSize: '10px',
+    fontWeight: '600',
+    letterSpacing: '1.2px',
+    textTransform: 'uppercase',
+    color: '#8a8a8a',
+    padding: '6px 14px 10px',
+    fontFamily: 'Montserrat, sans-serif',
+  },
+  wsItem: {
+    width: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '11px 14px',
+    borderRadius: '8px',
+    background: 'transparent',
+    border: '0.5px solid transparent',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    textAlign: 'left',
+    fontFamily: 'Montserrat, sans-serif',
+    whiteSpace: 'nowrap',
+    marginBottom: '2px',
+  },
   sidebar: {
     background: '#0f0f0f',
     borderRight: '1px solid #2a2a2a',

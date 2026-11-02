@@ -32,8 +32,9 @@ export default function Channels() {
 
   useEffect(() => {
     if (!currentUser) { setMyAccountType(null); return }
-    supabase.from('profiles').select('account_type').eq('id', currentUser.id).single()
-      .then(({ data }) => setMyAccountType(data?.account_type ?? null))
+    // View-only admins (Brett) see everything but get no staff controls.
+    supabase.from('profiles').select('account_type, view_only').eq('id', currentUser.id).single()
+      .then(({ data }) => setMyAccountType(data?.view_only ? 'agent' : (data?.account_type ?? null)))
   }, [currentUser])
 
   // avatar_url comes along here so message photos stay current. Photos are

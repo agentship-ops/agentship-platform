@@ -16,7 +16,8 @@ const fullName = p => [p.first_name, p.last_name].filter(Boolean).join(' ') || '
 
 export default function MyAgents() {
   const { profile } = useAuth()
-  const isAdmin = profile?.account_type === 'admin'
+  // View-only admins (Brett) see everything but get no staff controls.
+  const isAdmin = profile?.account_type === 'admin' && !profile?.view_only
   const now = new Date(), realY = now.getFullYear(), curY = Math.max(realY, FIRST_PLAN_YEAR)
   const monthFor = y => (y < realY ? 11 : y > realY ? 0 : now.getMonth())
   const [loading, setLoading] = useState(true)

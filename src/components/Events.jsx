@@ -102,7 +102,8 @@ function monthCells(year, month) {
 
 export default function Events() {
   const { user, profile } = useAuth()
-  const canManage = profile?.account_type === 'admin' || profile?.account_type === 'leader'
+  // View-only admins (Brett) see everything but get no staff controls.
+  const canManage = (profile?.account_type === 'admin' || profile?.account_type === 'leader') && !profile?.view_only
 
   const [events, setEvents] = useState([])
   const [rsvps, setRsvps] = useState([])

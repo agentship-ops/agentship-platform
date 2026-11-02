@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
+import { workspacesFor, workspaceOf } from '../lib/workspaces'
 
 function IconMenu() {
   return (
@@ -215,6 +216,9 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0, acti
     || 'Agent'
 
   const onSettings = typeof activeView === 'string' && activeView.startsWith('settings')
+  // Only people with access to more than one workspace see the switch.
+  const myWorkspaces = workspacesFor(profile)
+  const currentWorkspace = workspaceOf(activeView)
   const ringActive = accountOpen || onSettings || avatarHover
 
   return (
@@ -223,6 +227,8 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0, acti
         <IconMenu />
       </button>
       <span style={styles.agentship}>AGENTSHIP</span>
+      {currentWorkspace === 'leader' && <span style={styles.wsChipLeader}>Leader Portal</span>}
+      {currentWorkspace === 'hq' && <span style={styles.wsChipHq}>Headquarters</span>}
       <div style={{ flex: 1 }} />
       <div style={styles.right}>
 
@@ -337,6 +343,20 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0, acti
                 </div>
               </div>
 
+              {myWorkspaces.length > 1 && (
+                <div style={styles.wsSection}>
+                  <div style={styles.wsHeading}>Workspace</div>
+                  {myWorkspaces.map(ws => (
+                    <WorkspaceItem
+                      key={ws.id}
+                      ws={ws}
+                      current={currentWorkspace === ws.id}
+                      onClick={() => go(ws.home)}
+                    />
+                  ))}
+                </div>
+              )}
+
               <div style={styles.menuList}>
                 <MenuItem
                   icon={<IconUser />}
@@ -373,6 +393,32 @@ export default function TopBar({ onToggleSidebar, onNavigate, dmUnread = 0, acti
 
       </div>
     </div>
+  )
+}
+
+function WorkspaceItem({ ws, current, onClick }) {
+  const [hover, setHover] = useState(false)
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      aria-current={current ? 'true' : undefined}
+      style={{
+        ...styles.wsItem,
+        background: current ? 'rgba(201,168,76,0.12)' : hover ? '#1f1f1f' : 'transparent',
+        borderColor: current ? 'rgba(201,168,76,0.35)' : 'transparent',
+      }}
+    >
+      <span style={{ ...styles.wsIcon, background: current ? '#C9A84C' : '#262626' }}>
+        <i className={`ti ${ws.icon}`} aria-hidden="true" style={{ fontSize: '16px', color: current ? '#0A0A0A' : '#C9A84C' }} />
+      </span>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, minWidth: 0 }}>
+        <span style={{ fontSize: '13px', fontWeight: current ? 700 : 600, color: current ? '#C9A84C' : '#e9e9e9' }}>{ws.label}</span>
+        <span style={{ fontSize: '10.5px', color: '#8a8a8a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ws.sub}</span>
+      </span>
+      {current && <i className="ti ti-check" aria-hidden="true" style={{ fontSize: '15px', color: '#C9A84C' }} />}
+    </button>
   )
 }
 
@@ -477,6 +523,37 @@ const styles = {
     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
   },
   menuList: { padding: '6px' },
+  wsSection: {
+    padding: '10px 6px 8px', borderBottom: '1px solid #232323',
+    display: 'flex', flexDirection: 'column', gap: '3px',
+  },
+  wsHeading: {
+    fontSize: '9.5px', fontWeight: '600', letterSpacing: '1.2px',
+    textTransform: 'uppercase', color: '#8a8a8a', padding: '0 8px 6px',
+    fontFamily: 'Montserrat, sans-serif',
+  },
+  wsItem: {
+    width: '100%', display: 'flex', alignItems: 'center', gap: '11px',
+    padding: '8px', borderRadius: '8px', border: '1px solid transparent',
+    cursor: 'pointer', textAlign: 'left', fontFamily: 'Montserrat, sans-serif',
+    transition: 'background 0.12s',
+  },
+  wsIcon: {
+    width: '30px', height: '30px', borderRadius: '8px', flexShrink: 0,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  },
+  wsChipLeader: {
+    padding: '4px 10px', border: '1px solid #ffffff', borderRadius: '20px',
+    fontSize: '10px', fontWeight: '600', letterSpacing: '1.2px', color: '#ffffff',
+    textTransform: 'uppercase', fontFamily: 'Montserrat, sans-serif', flexShrink: 0,
+    whiteSpace: 'nowrap',
+  },
+  wsChipHq: {
+    padding: '4px 10px', border: '1px solid #C9A84C', borderRadius: '20px',
+    fontSize: '10px', fontWeight: '600', letterSpacing: '1.2px', color: '#C9A84C',
+    textTransform: 'uppercase', fontFamily: 'Montserrat, sans-serif', flexShrink: 0,
+    whiteSpace: 'nowrap',
+  },
   menuItem: {
     width: '100%', display: 'flex', alignItems: 'center', gap: '12px',
     padding: '10.5px 12px', borderRadius: '8px', border: 'none',

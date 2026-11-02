@@ -20,7 +20,9 @@ import ResourceAudible from '../components/ResourceAudible'
 import ResourceVendors from '../components/ResourceVendors'
 import ScriptsLibrary from '../components/ScriptsLibrary'
 import MyBusiness from '../components/myBusiness/MyBusiness'
-import MyAgents from '../components/myBusiness/MyAgents'
+import LeaderPortal from '../components/workspaces/LeaderPortal'
+import Headquarters from '../components/workspaces/Headquarters'
+import { workspaceOf, canOpen } from '../lib/workspaces'
 
 const VIEWS = {
   leaderboard: <Leaderboard />,
@@ -55,8 +57,9 @@ function academyView(view) {
 }
 
 // The old Goal Tracker and agent P&L now live inside My Business, so any
-// saved link to them opens the matching My Business tab.
-const REDIRECTS = { goal: 'mybusiness:pace', pl: 'mybusiness:pl' }
+// saved link to them opens the matching My Business tab. My Agents moved
+// into the Leader Portal, so the old id opens it there.
+const REDIRECTS = { goal: 'mybusiness:pace', pl: 'mybusiness:pl', myagents: 'leader:myagents' }
 
 const SETTINGS_SECTIONS = {
   'settings-profile': 'profile',
@@ -128,6 +131,11 @@ export default function Dashboard() {
 
   if (!user) return <Navigate to="/login" replace />
 
+  // Leader Portal and Headquarters views only open for people whose profile
+  // switch is on. Anyone else lands on the Leaderboard, same as any unknown view.
+  const workspace = workspaceOf(activeView)
+  const allowed = workspace === 'platform' || canOpen(profile, workspace)
+
   return (
     <div style={styles.app}>
       <WelcomeSplash />
@@ -145,7 +153,13 @@ export default function Dashboard() {
             setActiveView={setActiveView}
           />
           <main style={styles.main}>
-            {activeView === 'messages' ? (
+            {!allowed ? (
+              <Leaderboard />
+            ) : workspace === 'leader' ? (
+              <LeaderPortal view={activeView} isLeader={isLeader} />
+            ) : workspace === 'hq' ? (
+              <Headquarters view={activeView} />
+            ) : activeView === 'messages' ? (
               <Messages onUnreadChange={setDmUnread} />
             ) : SETTINGS_SECTIONS[activeView] ? (
               // The account menu points straight at a section, so Settings
@@ -156,8 +170,6 @@ export default function Dashboard() {
               />
             ) : activeView === 'mybusiness' || activeView.startsWith('mybusiness:') ? (
               <MyBusiness key={activeView} initialTab={activeView.split(':')[1]} />
-            ) : activeView === 'myagents' && isLeader ? (
-              <MyAgents />
             ) : academyView(activeView) ? (
               <Academy view={academyView(activeView)} onNavigate={setActiveView} />
             ) : (

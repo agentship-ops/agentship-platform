@@ -34,7 +34,8 @@ const CONFIG = {
 export default function PostFeed({ space }) {
   const cfg = CONFIG[space] || CONFIG.referrals
   const { user, profile } = useAuth()
-  const accountType = profile?.account_type ?? null
+  // View-only admins (Brett) see everything but get no staff controls.
+  const accountType = profile?.view_only ? 'agent' : (profile?.account_type ?? null)
   const isStaff = accountType === 'admin' || accountType === 'leader'
   const canPost = !cfg.adminOnly || accountType === 'admin'
 
