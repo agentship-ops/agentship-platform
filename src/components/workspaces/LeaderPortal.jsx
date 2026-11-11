@@ -1,7 +1,9 @@
 // Leader Portal pages. Shells for now: each page is a placeholder until it is
-// built, except My Agents, which moved here from the Agent Platform sidebar.
+// built, except My Agents, which moved here from the Agent Platform sidebar,
+// and Resource Library (ResourceLibrary.jsx).
 import ComingSoon from '../ComingSoon'
 import MyAgents from '../myBusiness/MyAgents'
+import ResourceLibrary from './ResourceLibrary'
 
 const PAGES = {
   'leader:home': { title: 'Leader Home', icon: 'ti-home', description: 'Everything for leading your agents and growing your group, in one place.' },
@@ -19,6 +21,8 @@ export default function LeaderPortal({ view, isLeader }) {
     if (isLeader) return <MyAgents />
     return <ComingSoon title="My Agents" icon="ti-users-group" description="Your agents' plans and pace. Opens once your account is set up to see agent plans." phase="Coming Soon" />
   }
+  // Resource Library checks access on the server, so it is safe to render here.
+  if (view === 'leader:library') return <ResourceLibrary />
   const page = PAGES[view] || PAGES['leader:home']
   return <ComingSoon title={page.title} icon={page.icon} description={page.description} phase="Coming Soon" />
 }
