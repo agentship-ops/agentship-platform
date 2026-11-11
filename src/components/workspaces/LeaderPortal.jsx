@@ -6,9 +6,9 @@ import MyAgents from '../myBusiness/MyAgents'
 const PAGES = {
   'leader:home': { title: 'Leader Home', icon: 'ti-home', description: 'Everything for leading your agents and growing your group, in one place.' },
   'leader:recruits': { title: 'My Recruits', icon: 'ti-user-plus', description: "Everyone you're talking to, where they are in the process, and what's next." },
-  'leader:winday': { title: 'Recruiting Win the Day', icon: 'ti-sun', description: 'Daily recruiting activity alongside your own business. Built once the recruiting framework is final.' },
-  'leader:library': { title: 'Leader Library', icon: 'ti-folder', description: "Agreements, DISC and KPA, facilitator's guides and hiring playbooks, opening live from Google Drive." },
-  'leader:ask': { title: 'Ask Agentship for Leaders', icon: 'ti-sparkles', description: 'Coaching answers grounded in your agents\u2019 profiles and Kalie\u2019s frameworks.' },
+  'leader:pl': { title: 'P&L', icon: 'ti-report-money', description: 'The P&L for the group you lead, by month.' },
+  'leader:library': { title: 'Resource Library', icon: 'ti-folder', description: "Agreements, DISC and KPA, facilitator's guides and hiring playbooks, opening live from Google Drive." },
+  'leader:ask': { title: 'Ask Agentship', icon: 'ti-sparkles', description: 'Coaching answers grounded in your agents\u2019 profiles and Kalie\u2019s frameworks.' },
 }
 
 export default function LeaderPortal({ view, isLeader }) {

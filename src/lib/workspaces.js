@@ -51,24 +51,27 @@ export function workspacesFor(profile) {
   return WORKSPACES.filter(w => canOpen(profile, w.id))
 }
 
+// Recruiting Win the Day lives on Leader Home, not in the sidebar.
 export const LEADER_NAV = [
   { id: 'leader:home', label: 'Leader Home', icon: 'ti-home' },
+  { id: 'leader:ask', label: 'Ask Agentship', icon: 'ti-sparkles' },
   { id: 'leader:myagents', label: 'My Agents', icon: 'ti-users-group' },
   { id: 'leader:recruits', label: 'My Recruits', icon: 'ti-user-plus' },
-  { id: 'leader:winday', label: 'Recruiting Win the Day', icon: 'ti-sun' },
-  { id: 'leader:library', label: 'Leader Library', icon: 'ti-folder' },
-  { id: 'leader:ask', label: 'Ask Agentship for Leaders', icon: 'ti-sparkles' },
+  { id: 'leader:pl', label: 'P&L', icon: 'ti-report-money' },
+  { id: 'leader:library', label: 'Resource Library', icon: 'ti-folder' },
 ]
 
+// An item with a "section" starts a new labeled group in the sidebar.
 export const HQ_NAV = [
-  { id: 'hq:overview', label: 'Overview', icon: 'ti-layout-dashboard' },
+  { id: 'hq:overview', label: 'Overview', icon: 'ti-layout-dashboard', section: 'Company' },
   { id: 'hq:pl', label: 'P&L', icon: 'ti-report-money' },
-  { id: 'hq:budget', label: 'Budget vs Actual', icon: 'ti-target' },
+  { id: 'hq:budget', label: 'Budget vs. Actual', icon: 'ti-target' },
+  { id: 'hq:distributions', label: 'Distributions', icon: 'ti-building-bank' },
   { id: 'hq:closings', label: 'Closings', icon: 'ti-key' },
   { id: 'hq:pending', label: 'Pending', icon: 'ti-clock' },
   { id: 'hq:agents', label: 'Agent Performance', icon: 'ti-chart-line' },
-  { id: 'hq:distributions', label: 'Distributions', icon: 'ti-building-bank' },
   { id: 'hq:cap', label: 'Cap Tracker', icon: 'ti-receipt' },
-  { id: 'hq:vendors', label: 'Lenders & Attorneys', icon: 'ti-address-book' },
-  { id: 'hq:inbox', label: 'DA Inbox', icon: 'ti-inbox' },
+  { id: 'hq:vendors', label: 'Vendor Tracker', icon: 'ti-address-book' },
+  { id: 'hq:inbox', label: 'DA Inbox', icon: 'ti-inbox', section: 'Needs Attention' },
+  { id: 'hq:missing', label: 'Missing Info', icon: 'ti-alert-triangle' },
 ]

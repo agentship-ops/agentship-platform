@@ -237,12 +237,18 @@ export default function Sidebar({ open, activeView, setActiveView }) {
 function WorkspaceNav({ label, items, activeView, setActiveView }) {
   return (
     <>
-      <div style={styles.wsLabel}>{label}</div>
-      {items.map(item => {
+      {!items[0]?.section && <div style={styles.wsLabel}>{label}</div>}
+      {items.map((item, i) => {
         const active = activeView === item.id
         return (
+          <div key={item.id}>
+          {item.section && (
+            <>
+              {i > 0 && <div style={styles.wsDivider} />}
+              <div style={styles.wsLabel}>{item.section}</div>
+            </>
+          )}
           <button
-            key={item.id}
             onClick={() => setActiveView(item.id)}
             style={{
               ...styles.wsItem,
@@ -252,6 +258,7 @@ function WorkspaceNav({ label, items, activeView, setActiveView }) {
             <i className={`ti ${item.icon}`} aria-hidden="true" style={{ fontSize: '18px', color: '#C9A84C', flexShrink: 0 }} />
             <span style={{ color: active ? '#C9A84C' : '#ffffff' }}>{item.label}</span>
           </button>
+          </div>
         )
       })}
     </>
@@ -259,6 +266,11 @@ function WorkspaceNav({ label, items, activeView, setActiveView }) {
 }
 
 const styles = {
+  wsDivider: {
+    height: '1px',
+    background: '#2a2a2a',
+    margin: '14px 8px 8px',
+  },
   wsLabel: {
     fontSize: '10px',
     fontWeight: '600',
