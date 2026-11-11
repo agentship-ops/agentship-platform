@@ -2,6 +2,7 @@
 // Pulls Follow Up Boss deals (Sisu Sellers + Sisu Buyers) into Supabase.
 // Also stores, for My Business: the deal's total commission (FUB commissionValue)
 // and the contact's lead source, with is_zillow = source contains "zillow".
+// Also stores the client's FUB person id and name (Win the Day runs on names).
 // READ-ONLY against Follow Up Boss. Writes only to the leaderboard_deals table.
 // Trigger by hand while testing:  /api/sync-leaderboard?token=YOUR_TOKEN
 // (reuses the same INTROSPECT_TOKEN you set earlier)
@@ -98,7 +99,9 @@ export default async function handler(req, res) {
             closed_date: (d.stageName === 'Closed') ? dstr(d.enteredStageAt) : null,
             total_commission: totalCommission(d),
             lead_source: known[d.id] != null ? known[d.id] : null,
-            is_zillow: known[d.id] != null ? /zillow/i.test(known[d.id]) : false
+            is_zillow: known[d.id] != null ? /zillow/i.test(known[d.id]) : false,
+            fub_person_id: (d.people && d.people[0] && d.people[0].id) || (d.contacts && d.contacts[0] && d.contacts[0].id) || null,
+            client_name: (d.people && d.people[0] && d.people[0].name) || (d.contacts && d.contacts[0] && d.contacts[0].name) || d.name || null
           });
           var person = (d.people && d.people[0] && d.people[0].id) || (d.contacts && d.contacts[0] && d.contacts[0].id) || null;
           if (person && known[d.id] == null) personOf[d.id] = person;
