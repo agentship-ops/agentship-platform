@@ -293,3 +293,81 @@ export function WeekBoxes({ total }) {
 
 const s = {
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 },
+    sheet: {
+    width: '100%', maxWidth: 420, maxHeight: '92vh',
+    background: '#0A0A0A', border: '1px solid #2a2a2a',
+    borderRadius: 16, color: '#FFFFFF',
+    fontFamily: 'Montserrat, sans-serif',
+    display: 'flex', flexDirection: 'column', overflow: 'hidden',
+  },
+  header: {
+    display: 'flex', alignItems: 'center', gap: 8,
+    padding: '14px 12px 12px 20px', borderBottom: '1px solid #2a2a2a',
+  },
+  iconBtn: {
+    width: 44, height: 44, border: 'none', background: 'transparent',
+    color: '#FFFFFF', fontSize: 20, cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  },
+  body: {
+    flex: 1, overflowY: 'auto', padding: '16px 20px 20px',
+    display: 'flex', flexDirection: 'column', gap: 12,
+  },
+  label: { fontSize: 13, color: '#CFCFCF' },
+  input: {
+    height: 48, boxSizing: 'border-box', padding: '0 14px',
+    background: '#1E1E1E', border: '1px solid #333', borderRadius: 10,
+    color: '#FFFFFF', fontFamily: 'Montserrat, sans-serif', fontSize: 15,
+  },
+  hint: { fontSize: 12, color: '#8A8A8A', lineHeight: 1.5 },
+  personRow: {
+    minHeight: 64, display: 'flex', alignItems: 'center',
+    justifyContent: 'space-between', gap: 12, padding: '12px 14px',
+    background: '#1E1E1E', border: '1px solid #2a2a2a', borderRadius: 10,
+    color: '#FFFFFF', textAlign: 'left', cursor: 'pointer',
+    fontFamily: 'Montserrat, sans-serif',
+  },
+  personCard: {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    gap: 10, padding: '12px 14px', background: '#1E1E1E', borderRadius: 10,
+  },
+  block: {
+    display: 'flex', flexDirection: 'column', gap: 10, padding: 14,
+    background: '#161616', border: '1px solid #2a2a2a', borderRadius: 10,
+  },
+  chip: {
+    minHeight: 44, padding: '0 14px', borderRadius: 22,
+    border: '1px solid #444', fontSize: 13, fontWeight: 600,
+    cursor: 'pointer', fontFamily: 'Montserrat, sans-serif',
+  },
+  outcome: {
+    minHeight: 48, display: 'flex', flexDirection: 'column',
+    justifyContent: 'center', gap: 2, padding: '8px 14px',
+    borderRadius: 10, border: '1px solid #333', color: '#FFFFFF',
+    textAlign: 'left', cursor: 'pointer', fontFamily: 'Montserrat, sans-serif',
+  },
+  footer: {
+    padding: '14px 20px 20px', borderTop: '1px solid #2a2a2a',
+    display: 'flex', flexDirection: 'column', gap: 8,
+  },
+  primary: {
+    height: 52, borderRadius: 10, border: 'none', fontSize: 14,
+    fontWeight: 700, letterSpacing: 1,
+    fontFamily: 'Montserrat, sans-serif', cursor: 'pointer',
+  },
+  secondary: {
+    minHeight: 48, borderRadius: 10, border: '1px solid #333',
+    background: 'transparent', color: '#FFFFFF', fontSize: 14,
+    fontWeight: 600, cursor: 'pointer', fontFamily: 'Montserrat, sans-serif',
+  },
+  secondaryLink: {
+    flex: 1, minHeight: 44, borderRadius: 8, border: '1px solid #555',
+    color: '#FFFFFF', fontSize: 13, fontWeight: 600, textDecoration: 'none',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  },
+  card: {
+    padding: 16, background: '#1E1E1E', borderRadius: 12,
+    display: 'flex', flexDirection: 'column', gap: 10,
+  },
+  error: { fontSize: 12, color: '#F08A8A', textAlign: 'center', lineHeight: 1.5 },
+}
