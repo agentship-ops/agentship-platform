@@ -200,5 +200,62 @@ export default async function handler(req, res) {
       const newStage = nextStage(stageBefore, outcome)
       const stageAfter = newStage || stageBefore
       const isCurrentClient = ORDER.indexOf((stageAfter || '').toLowerCase()) >= ORDER.indexOf('showing homes')
+            // Only stage and timeframe. Never emails, phones, addresses or tags.
+      const update = {}
+      if (newStage) update.stage = newStage
+      if (!isCurrentClient && person.timeframeId !== timeframeId) update.timeframeId = timeframeId
+      if (Object.keys(update).length) await fub(key, 'PUT', `people/${personId}`, update)
 
-      // Only stage and timeframe. Never
+      const cad = CADENCE[timeframeId] || null
+      const lines = [
+        mine.key ? 'Nurture (MOTIF) · logged in Agentship' : `Nurture logged by ${agentName} · Agentship`,
+        'M · Motivation: ' + why,
+        'O · Opportunity: Not working with another agent',
+        'T · Timeline: ' + tf.timeframe,
+        'I · Info: Phone and email confirmed',
+        'F · Follow-up: ' + OUTCOMES[outcome] + ((stageAfter || '').toLowerCase() === 'nurture' && cad ? ' · ' + cad[0] : ''),
+      ]
+      const note = await fub(key, 'POST', 'notes', { personId, subject: 'Nurture (MOTIF)', body: lines.join('\n'), isHtml: false })
+
+      const row = {
+        agent_id: profile.id,
+        fub_user_id: Number(profile.fub_user_id),
+        fub_person_id: personId,
+        person_name: person.name,
+        nurture_date: today,
+        week_bucket_start: weekStart(today),
+        source: ['command_center', 'sheet', 'call_prompt', 'signal'].includes(b.source) ? b.source : 'command_center',
+        motif: { why, opportunity: true, info: true, timeframe: tf.timeframe, outcome },
+        fub_timeframe_id: timeframeId,
+        fub_timeframe: tf.timeframe,
+        outcome: outcome === 'appt' ? 'appointment_set' : outcome === 'keep' ? 'keep_in_touch' : 'already_working',
+        fub_stage_before: stageBefore,
+        fub_stage_after: stageAfter,
+        fub_note_id: note && note.id ? note.id : null,
+        written_as: mine.key ? 'agent' : 'fallback:' + mine.reason,
+      }
+      await sb(sbUrl, sbKey, 'nurtures', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(row) })
+
+      const week = await weekCount(sbUrl, sbKey, profile.id, today)
+      let list = cad ? cad[1] : null
+      const low = (stageAfter || '').toLowerCase()
+      if (low === 'appointment set' || low === 'met with customer' || low === 'spoke with customer') list = 'Watch Leads'
+      if (isCurrentClient) list = 'Current Clients'
+
+      return res.status(200).json({
+        saved: true,
+        person: person.name,
+        stageBefore, stageAfter, stageChanged: !!newStage,
+        timeframe: isCurrentClient ? null : tf.timeframe,
+        smartList: list,
+        writtenAs: mine.key ? 'agent' : 'fallback',
+        appointment: outcome === 'appt',
+        week,
+      })
+    }
+
+    return res.status(400).json({ error: 'Unknown request.' })
+  } catch (e) {
+    return res.status(500).json({ error: String(e.message || e) })
+  }
+}
