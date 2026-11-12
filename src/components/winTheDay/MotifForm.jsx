@@ -293,4 +293,3 @@ export function WeekBoxes({ total }) {
 
 const s = {
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 },
-  sheet: { width: '100%', maxWidth: 420, maxHeight: '92vh', background: '#0A0A0A', border: '1px solid #2a2a2a', borderRadius: 16,
